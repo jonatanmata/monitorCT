@@ -3,6 +3,7 @@ import {
   ReactFlow, Background, BackgroundVariant, Controls, MiniMap,
   type Node as FlowNode, type Edge as FlowEdge, type Connection, type NodeChange,
 } from '@xyflow/react';
+import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { DeviceNode, type DeviceFlowNode } from './DeviceNode';
 import { FlowEdge as FlowEdgeComponent } from './FlowEdge';
@@ -93,6 +94,31 @@ export function TopologyCanvas({
     [onTopologyChanged, onSelectEdge],
   );
 
+  // Eliminar desde el lienzo (tecla Suprimir/Backspace) — persiste el borrado
+  const onNodesDelete = useCallback(
+    (deleted: RFNode[]) => {
+      Promise.all(deleted.map((n) => api.deleteNode(parseInt(n.id, 10))))
+        .then(() => {
+          onSelectNode(null);
+          onTopologyChanged();
+        })
+        .catch(() => onTopologyChanged());
+    },
+    [onSelectNode, onTopologyChanged],
+  );
+
+  const onEdgesDelete = useCallback(
+    (deleted: RFEdge[]) => {
+      Promise.all(deleted.map((e) => api.deleteEdge(parseInt(e.id, 10))))
+        .then(() => {
+          onSelectEdge(null);
+          onTopologyChanged();
+        })
+        .catch(() => onTopologyChanged());
+    },
+    [onSelectEdge, onTopologyChanged],
+  );
+
   const addNode = useCallback(
     (type: NodeType) => {
       void api
@@ -138,6 +164,9 @@ export function TopologyCanvas({
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
+        onNodesDelete={onNodesDelete}
+        onEdgesDelete={onEdgesDelete}
+        deleteKeyCode={['Delete', 'Backspace']}
         onConnect={onConnect}
         onConnectStart={() => setConnecting(true)}
         onConnectEnd={() => setConnecting(false)}

@@ -1,10 +1,11 @@
 import type { ApiNode, ApiEdge, LiveNode, Alert, LossMatrixCell, HourlyRow } from './types';
 
 async function http<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+  // Solo declaramos JSON cuando hay cuerpo: si se envía Content-Type: application/json
+  // con cuerpo vacío (p. ej. DELETE o POST sin body), Fastify responde 400.
+  const headers: Record<string, string> = { ...(options?.headers as Record<string, string>) };
+  if (options?.body != null) headers['Content-Type'] = 'application/json';
+  const res = await fetch(url, { ...options, headers });
   if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
   return res.json() as Promise<T>;
 }

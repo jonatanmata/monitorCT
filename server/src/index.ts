@@ -16,6 +16,18 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 async function main(): Promise<void> {
   const app = Fastify({ logger: { level: 'info' } });
 
+  // Tolerar cuerpos vacíos con Content-Type application/json (DELETE / POST sin body),
+  // que de otro modo Fastify rechaza con 400.
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    const text = (body as string).trim();
+    if (text === '') return done(null, undefined);
+    try {
+      done(null, JSON.parse(text));
+    } catch (err) {
+      done(err as Error, undefined);
+    }
+  });
+
   await app.register(fastifyCors, { origin: true });
   await app.register(fastifyWebsocket);
 
