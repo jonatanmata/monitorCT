@@ -367,9 +367,15 @@ export function registerApiRoutes(app: FastifyInstance): void {
 
   // ---------- Telegram ----------
   app.put('/api/settings/telegram', async (req) => {
-    const b = req.body as { enabled?: boolean; botToken?: string; chatId?: string; clear?: boolean };
+    const b = req.body as {
+      enabled?: boolean; botToken?: string; chatId?: string; clear?: boolean;
+      minSeverity?: 'info' | 'warning' | 'critical'; notifyResolved?: boolean; notifyDiagnosis?: boolean;
+    };
     if (b.clear) clearTelegramConfig();
-    else saveTelegramConfig({ enabled: b.enabled, botToken: b.botToken, chatId: b.chatId });
+    else saveTelegramConfig({
+      enabled: b.enabled, botToken: b.botToken, chatId: b.chatId,
+      minSeverity: b.minSeverity, notifyResolved: b.notifyResolved, notifyDiagnosis: b.notifyDiagnosis,
+    });
     return { ok: true, telegram: getTelegramConfigSafe() };
   });
 

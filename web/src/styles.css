@@ -264,6 +264,14 @@ h3:first-child { margin-top: 0; }
 .key-status.ok { color: #6ee7b7; }
 .key-status.fail { color: #fda4af; }
 .key-status.pending { color: var(--text-muted); }
+/* Guía de configuración de Telegram */
+.tg-guide { margin-bottom: 10px; }
+.tg-guide summary { cursor: pointer; color: var(--accent-soft); font-size: 12px; user-select: none; }
+.tg-guide ol { margin: 8px 0 0; padding-left: 18px; }
+.tg-guide li { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 5px; }
+.tg-guide code { background: var(--bg); padding: 1px 5px; border-radius: 4px; color: var(--accent-soft); font-size: 11px; }
+.tg-prefs { margin-top: 10px; padding: 10px; background: var(--bg); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); }
+
 .update-log {
   margin-top: 10px; max-height: 200px; overflow: auto; white-space: pre-wrap;
   background: var(--bg); border: 1px solid var(--border-soft); border-radius: var(--radius-sm);

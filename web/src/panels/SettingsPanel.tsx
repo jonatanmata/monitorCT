@@ -27,7 +27,8 @@ export function SettingsPanel({ onAiChanged }: Props) {
   const [saved, setSaved] = useState(false);
 
   // Telegram
-  const [tg, setTg] = useState<{ enabled: boolean; hasToken: boolean; chatId: string }>({ enabled: false, hasToken: false, chatId: '' });
+  type TgCfg = { enabled: boolean; hasToken: boolean; chatId: string; minSeverity: 'info' | 'warning' | 'critical'; notifyResolved: boolean; notifyDiagnosis: boolean };
+  const [tg, setTg] = useState<TgCfg>({ enabled: false, hasToken: false, chatId: '', minSeverity: 'warning', notifyResolved: true, notifyDiagnosis: true });
   const [tgToken, setTgToken] = useState('');
   const [tgChatId, setTgChatId] = useState('');
   const [tgStatus, setTgStatus] = useState<KeyStatus>(null);
@@ -99,6 +100,11 @@ export function SettingsPanel({ onAiChanged }: Props) {
   const toggleTelegram = async (enabled: boolean) => {
     await api.saveTelegram({ enabled });
     await load();
+  };
+
+  const saveTgPref = async (patch: Partial<TgCfg>) => {
+    setTg((prev) => ({ ...prev, ...patch }));
+    await api.saveTelegram(patch);
   };
 
   const detectChat = async () => {
@@ -230,8 +236,17 @@ export function SettingsPanel({ onAiChanged }: Props) {
       <div className="settings-section">
         <h3>
           ✈️ Alertas por Telegram
-          <InfoTip text="Recibe las alertas (y sus diagnósticos de IA) en tu Telegram. Cómo obtener los datos: 1) En Telegram habla con @BotFather, envía /newbot y sigue los pasos — te da el TOKEN del bot. 2) Envíale cualquier mensaje a tu nuevo bot. 3) El CHAT ID: habla con @userinfobot y te lo dice, o para un grupo agrega el bot al grupo y usa el id del grupo. Pega ambos aquí y pulsa «Guardar y probar»: te llegará un mensaje de prueba." />
+          <InfoTip text="Recibe las alertas (y sus diagnósticos de IA) en tu Telegram, usando TU propio bot. El token se guarda cifrado en este PC y los mensajes van directo de tu bot a tu chat, sin terceros." />
         </h3>
+        <details className="tg-guide">
+          <summary>¿Cómo lo configuro? (crear el bot en 2 minutos)</summary>
+          <ol>
+            <li>En Telegram busca <b>@BotFather</b> y envíale <code>/newbot</code>. Elige un nombre y un usuario que termine en <code>bot</code>. Te dará un <b>token</b> (ej. <code>7834…:AAH8x…</code>).</li>
+            <li>Pega el token abajo y ábrele un chat a tu nuevo bot: envíale cualquier mensaje (ej. «hola»).</li>
+            <li>Pulsa <b>«Detectar chat id»</b> — se completa solo. Luego <b>«Guardar y probar»</b> y te llegará un mensaje de prueba.</li>
+            <li>¿Para un grupo del equipo? Crea el grupo, agrega el bot, escribe un mensaje ahí y usa «Detectar chat id» (los de grupo son negativos).</li>
+          </ol>
+        </details>
         {tg.hasToken ? (
           <div>
             <div className="key-status ok">✔ Bot configurado{tg.chatId ? ` · chat ${tg.chatId}` : ''}</div>
@@ -239,6 +254,30 @@ export function SettingsPanel({ onAiChanged }: Props) {
               <input type="checkbox" checked={tg.enabled} onChange={(e) => void toggleTelegram(e.target.checked)} />
               <span>{tg.enabled ? 'Notificaciones activadas' : 'Notificaciones pausadas'}</span>
             </label>
+
+            {/* Preferencias: qué notificar */}
+            <div className="tg-prefs">
+              <div className="form-grid">
+                <label>
+                  Notificar desde
+                  <InfoTip text="Severidad mínima que se envía a Telegram. «Advertencia» (recomendado) omite los avisos informativos; «Crítica» solo manda lo grave (caídas, saturación); «Todo» envía también las informativas." />
+                </label>
+                <select value={tg.minSeverity} onChange={(e) => void saveTgPref({ minSeverity: e.target.value as TgCfg['minSeverity'] })}>
+                  <option value="info">Todo (info, advertencia y crítica)</option>
+                  <option value="warning">Advertencia o superior</option>
+                  <option value="critical">Solo críticas</option>
+                </select>
+              </div>
+              <label className="switch-row" style={{ marginTop: 8 }}>
+                <input type="checkbox" checked={tg.notifyResolved} onChange={(e) => void saveTgPref({ notifyResolved: e.target.checked })} />
+                <span>Avisar también cuando una alerta se resuelve (✅)</span>
+              </label>
+              <label className="switch-row" style={{ marginTop: 6 }}>
+                <input type="checkbox" checked={tg.notifyDiagnosis} onChange={(e) => void saveTgPref({ notifyDiagnosis: e.target.checked })} />
+                <span>Incluir el diagnóstico de la IA (🤖)</span>
+              </label>
+            </div>
+
             <div className="btn-row">
               <button className="ghost" onClick={() => void api.testTelegram({}).then((r) => setTgStatus({ kind: r.ok ? 'ok' : 'fail', text: r.detail }))}>
                 Enviar prueba

@@ -8,22 +8,39 @@ import { encryptJson, decryptJson } from '../db/crypto.js';
  * "Probar" de la interfaz guía ese flujo).
  */
 
+export type Severity = 'info' | 'warning' | 'critical';
+
 export interface TelegramConfig {
   enabled: boolean;
   botToken: string;
   chatId: string;
+  // Preferencias de qué notificar
+  minSeverity: Severity;     // severidad mínima que se envía
+  notifyResolved: boolean;   // avisar cuando una alerta se resuelve
+  notifyDiagnosis: boolean;  // enviar el diagnóstico de la IA
 }
 
-const DEFAULT: TelegramConfig = { enabled: false, botToken: '', chatId: '' };
+const DEFAULT: TelegramConfig = {
+  enabled: false, botToken: '', chatId: '',
+  minSeverity: 'warning', notifyResolved: true, notifyDiagnosis: true,
+};
+
+const SEVERITY_RANK: Record<Severity, number> = { info: 0, warning: 1, critical: 2 };
 
 export function getTelegramConfig(): TelegramConfig {
-  return decryptJson<TelegramConfig>(getSetting('telegram_config_enc', ''), DEFAULT);
+  return { ...DEFAULT, ...decryptJson<Partial<TelegramConfig>>(getSetting('telegram_config_enc', ''), {}) };
 }
 
 /** Devuelve la config sin exponer el token (para la interfaz). */
-export function getTelegramConfigSafe(): { enabled: boolean; hasToken: boolean; chatId: string } {
+export function getTelegramConfigSafe(): {
+  enabled: boolean; hasToken: boolean; chatId: string;
+  minSeverity: Severity; notifyResolved: boolean; notifyDiagnosis: boolean;
+} {
   const c = getTelegramConfig();
-  return { enabled: c.enabled, hasToken: Boolean(c.botToken), chatId: c.chatId };
+  return {
+    enabled: c.enabled, hasToken: Boolean(c.botToken), chatId: c.chatId,
+    minSeverity: c.minSeverity, notifyResolved: c.notifyResolved, notifyDiagnosis: c.notifyDiagnosis,
+  };
 }
 
 export function saveTelegramConfig(patch: Partial<TelegramConfig>): void {
@@ -33,8 +50,25 @@ export function saveTelegramConfig(patch: Partial<TelegramConfig>): void {
     // token vacío = conservar el guardado
     botToken: patch.botToken ? patch.botToken.trim() : current.botToken,
     chatId: patch.chatId !== undefined ? patch.chatId.trim() : current.chatId,
+    minSeverity: patch.minSeverity ?? current.minSeverity,
+    notifyResolved: patch.notifyResolved ?? current.notifyResolved,
+    notifyDiagnosis: patch.notifyDiagnosis ?? current.notifyDiagnosis,
   };
   setSetting('telegram_config_enc', encryptJson(merged));
+}
+
+/** ¿Se debe notificar una alerta de esta severidad, según la preferencia? */
+export function telegramAllowsSeverity(severity: Severity): boolean {
+  const c = getTelegramConfig();
+  return SEVERITY_RANK[severity] >= SEVERITY_RANK[c.minSeverity];
+}
+
+export function telegramNotifyResolved(): boolean {
+  return getTelegramConfig().notifyResolved;
+}
+
+export function telegramNotifyDiagnosis(): boolean {
+  return getTelegramConfig().notifyDiagnosis;
 }
 
 export function clearTelegramConfig(): void {

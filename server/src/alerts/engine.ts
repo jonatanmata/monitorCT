@@ -1,7 +1,7 @@
 import { db, getSetting } from '../db/index.js';
 import { getLiveNode, broadcast } from '../state.js';
 import type { NodeRow, EdgeRow } from '../db/index.js';
-import { sendTelegram, formatAlertMessage, formatResolvedMessage } from './telegram.js';
+import { sendTelegram, formatAlertMessage, formatResolvedMessage, telegramAllowsSeverity, telegramNotifyResolved } from './telegram.js';
 
 export interface Thresholds {
   cpuPct: number;
@@ -52,8 +52,8 @@ function raise(key: OpenAlertKey, severity: 'info' | 'warning' | 'critical', mes
     .run(key.nodeId, key.edgeId, severity, key.type, message);
   const id = Number(res.lastInsertRowid);
   broadcast('alert', { id, ...key, severity, message });
-  // Notificación a Telegram (si está configurado); no bloquea la evaluación
-  void sendTelegram(formatAlertMessage({ severity, type: key.type, message }));
+  // Notificación a Telegram (si está configurado y la severidad supera el umbral elegido)
+  if (telegramAllowsSeverity(severity)) void sendTelegram(formatAlertMessage({ severity, type: key.type, message }));
   return id;
 }
 
@@ -63,7 +63,7 @@ function resolve(key: OpenAlertKey): void {
     const row = db.prepare('SELECT message FROM alerts WHERE id = ?').get(open.id) as { message: string } | undefined;
     db.prepare('UPDATE alerts SET resolved_at = unixepoch() WHERE id = ?').run(open.id);
     broadcast('alert_resolved', { id: open.id });
-    if (row) void sendTelegram(formatResolvedMessage(row.message));
+    if (row && telegramNotifyResolved()) void sendTelegram(formatResolvedMessage(row.message));
   }
 }
 
