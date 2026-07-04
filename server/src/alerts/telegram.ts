@@ -67,6 +67,36 @@ export async function sendTelegram(text: string): Promise<void> {
   }
 }
 
+/**
+ * Detecta el/los chat id automáticamente: lee los mensajes recientes que el bot
+ * ha recibido (getUpdates). El usuario primero le escribe cualquier cosa al bot.
+ */
+export async function detectChatIds(token?: string): Promise<{ ok: boolean; chats: { id: string; name: string }[]; detail: string }> {
+  const c = getTelegramConfig();
+  const botToken = token || c.botToken;
+  if (!botToken) return { ok: false, chats: [], detail: 'Falta el token del bot' };
+  try {
+    const r = (await callTelegram(botToken, 'getUpdates', {})) as {
+      ok: boolean; result?: { message?: { chat?: { id: number; title?: string; first_name?: string; username?: string } } }[]; description?: string;
+    };
+    if (!r.ok) return { ok: false, chats: [], detail: r.description || 'Telegram rechazó getUpdates (¿token inválido?)' };
+    const seen = new Map<string, string>();
+    for (const u of r.result ?? []) {
+      const chat = u.message?.chat;
+      if (!chat) continue;
+      const id = String(chat.id);
+      const name = chat.title || [chat.first_name, chat.username && `@${chat.username}`].filter(Boolean).join(' ') || id;
+      if (!seen.has(id)) seen.set(id, name);
+    }
+    const chats = [...seen.entries()].map(([id, name]) => ({ id, name }));
+    return chats.length
+      ? { ok: true, chats, detail: `Se detectaron ${chats.length} chat(s)` }
+      : { ok: false, chats: [], detail: 'No hay mensajes recientes. Envíale primero un mensaje a tu bot en Telegram y vuelve a intentar.' };
+  } catch (err) {
+    return { ok: false, chats: [], detail: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 /** Prueba la configuración enviando un mensaje real. */
 export async function testTelegram(cfg?: { botToken?: string; chatId?: string }): Promise<{ ok: boolean; detail: string }> {
   const c = getTelegramConfig();
@@ -97,4 +127,8 @@ export function formatAlertMessage(a: { severity: string; type: string; message:
 
 export function formatDiagnosisMessage(alertMessage: string, diagnosis: string): string {
   return `🤖 *Diagnóstico IA*\n_${alertMessage}_\n\n${diagnosis}`;
+}
+
+export function formatResolvedMessage(alertMessage: string): string {
+  return `✅ *Resuelta*\n${alertMessage}`;
 }

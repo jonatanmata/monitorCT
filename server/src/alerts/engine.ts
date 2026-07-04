@@ -1,7 +1,7 @@
 import { db, getSetting } from '../db/index.js';
 import { getLiveNode, broadcast } from '../state.js';
 import type { NodeRow, EdgeRow } from '../db/index.js';
-import { sendTelegram, formatAlertMessage } from './telegram.js';
+import { sendTelegram, formatAlertMessage, formatResolvedMessage } from './telegram.js';
 
 export interface Thresholds {
   cpuPct: number;
@@ -58,10 +58,12 @@ function raise(key: OpenAlertKey, severity: 'info' | 'warning' | 'critical', mes
 }
 
 function resolve(key: OpenAlertKey): void {
-  const open = findOpenAlert(key);
+  const open = findOpenAlert(key) as { id: number; message?: string } | undefined;
   if (open) {
+    const row = db.prepare('SELECT message FROM alerts WHERE id = ?').get(open.id) as { message: string } | undefined;
     db.prepare('UPDATE alerts SET resolved_at = unixepoch() WHERE id = ?').run(open.id);
     broadcast('alert_resolved', { id: open.id });
+    if (row) void sendTelegram(formatResolvedMessage(row.message));
   }
 }
 

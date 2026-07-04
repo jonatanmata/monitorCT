@@ -32,6 +32,12 @@ export function SettingsPanel({ onAiChanged }: Props) {
   const [tgChatId, setTgChatId] = useState('');
   const [tgStatus, setTgStatus] = useState<KeyStatus>(null);
 
+  // Actualizaciones
+  const [upd, setUpd] = useState<Awaited<ReturnType<typeof api.updateStatus>> | null>(null);
+  const [updChecking, setUpdChecking] = useState(false);
+  const [updApplying, setUpdApplying] = useState(false);
+  const [updLog, setUpdLog] = useState<string | null>(null);
+
   const load = () =>
     api.settings().then((s) => {
       setHasApiKey(s.hasApiKey);
@@ -42,7 +48,7 @@ export function SettingsPanel({ onAiChanged }: Props) {
       setTgChatId(s.telegram.chatId);
     }).catch(() => {});
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); void checkUpdate(); }, []);
 
   const saveKey = async () => {
     const key = keyInput.trim();
@@ -93,6 +99,42 @@ export function SettingsPanel({ onAiChanged }: Props) {
   const toggleTelegram = async (enabled: boolean) => {
     await api.saveTelegram({ enabled });
     await load();
+  };
+
+  const detectChat = async () => {
+    setTgStatus({ kind: 'pending', text: 'Buscando mensajes recientes al bot…' });
+    try {
+      const r = await api.detectTelegramChat(tgToken.trim() || undefined);
+      if (r.ok && r.chats.length) {
+        setTgChatId(r.chats[0].id);
+        setTgStatus({ kind: 'ok', text: `Detectado: ${r.chats.map((c) => `${c.name} (${c.id})`).join(', ')}` });
+      } else {
+        setTgStatus({ kind: 'fail', text: r.detail });
+      }
+    } catch (err) {
+      setTgStatus({ kind: 'fail', text: String(err) });
+    }
+  };
+
+  const checkUpdate = async () => {
+    setUpdChecking(true);
+    setUpdLog(null);
+    try { setUpd(await api.updateStatus()); } catch (err) { setUpdLog(String(err)); } finally { setUpdChecking(false); }
+  };
+
+  const applyUpdate = async () => {
+    if (!confirm('Se descargará y compilará la versión nueva (puede tardar un par de minutos). Luego reinicia la app para aplicarla. ¿Continuar?')) return;
+    setUpdApplying(true);
+    setUpdLog('Descargando y compilando…');
+    try {
+      const r = await api.applyUpdate();
+      setUpdLog(r.log);
+      if (r.ok) await checkUpdate();
+    } catch (err) {
+      setUpdLog(String(err));
+    } finally {
+      setUpdApplying(false);
+    }
   };
 
   const removeTelegram = async () => {
@@ -218,6 +260,7 @@ export function SettingsPanel({ onAiChanged }: Props) {
               />
               <div className="btn-row">
                 <button className="primary" onClick={() => void saveTelegram()}>Guardar y probar</button>
+                <button className="ghost" onClick={() => void detectChat()}>Detectar chat id</button>
               </div>
             </div>
           </div>
@@ -231,7 +274,7 @@ export function SettingsPanel({ onAiChanged }: Props) {
             />
             <input
               style={{ marginTop: 6 }}
-              placeholder="Chat id (de @userinfobot)"
+              placeholder="Chat id"
               value={tgChatId}
               onChange={(e) => setTgChatId(e.target.value)}
             />
@@ -239,7 +282,14 @@ export function SettingsPanel({ onAiChanged }: Props) {
               <button className="primary" onClick={() => void saveTelegram()} disabled={!tgToken.trim() || !tgChatId.trim()}>
                 Guardar y probar
               </button>
+              <button className="ghost" onClick={() => void detectChat()} disabled={!tgToken.trim()}>
+                Detectar chat id
+              </button>
             </div>
+            <p className="small" style={{ marginTop: 8 }}>
+              ¿No sabes tu chat id? Pega el token, envíale cualquier mensaje a tu bot en Telegram y pulsa
+              <b> «Detectar chat id»</b> — lo completa solo.
+            </p>
           </div>
         )}
         {tgStatus && <div className={`key-status ${tgStatus.kind}`}>{tgStatus.text}</div>}
@@ -270,6 +320,54 @@ export function SettingsPanel({ onAiChanged }: Props) {
       <div className="btn-row">
         <button className="primary" onClick={() => void saveGeneral()}>Guardar ajustes</button>
         {saved && <span className="key-status ok" style={{ alignSelf: 'center' }}>✔ Guardado</span>}
+      </div>
+
+      <div className="settings-section" style={{ marginTop: 14 }}>
+        <h3>
+          🔄 Actualizaciones
+          <InfoTip text="El sistema se actualiza solo desde GitHub: cada vez que reinicias la app, comprueba si hay una versión nueva y, si la hay, la descarga y compila antes de arrancar (si algo falla, arranca igual con la versión que ya tenías). También puedes descargarla ahora con «Actualizar ahora» y luego reiniciar. Requiere haber instalado el proyecto con «git clone»." />
+        </h3>
+        {upd && (
+          <div className="small" style={{ marginBottom: 8 }}>
+            Versión <b>{upd.version}</b>
+            {upd.currentCommit && ` · ${upd.currentCommit}`}
+            {upd.currentDate && ` · ${upd.currentDate}`}
+          </div>
+        )}
+        {upd?.note && <div className="key-status pending">{upd.note}</div>}
+        {upd?.updateAvailable && (
+          <div className="key-status ok" style={{ marginBottom: 8 }}>
+            🎉 Hay una actualización disponible ({upd.behindBy} cambio{upd.behindBy > 1 ? 's' : ''})
+            {upd.latestMessage && <>: <i>{upd.latestMessage}</i></>}
+          </div>
+        )}
+        {upd && upd.hasGit && !upd.updateAvailable && !upd.note && (
+          <div className="key-status pending">Estás en la última versión.</div>
+        )}
+        {upd?.hasGit && (
+          <label className="switch-row" style={{ marginTop: 8 }}>
+            <input
+              type="checkbox"
+              checked={upd.autoUpdate}
+              onChange={(e) => void api.setAutoUpdate(e.target.checked).then(() => setUpd((u) => u && { ...u, autoUpdate: e.target.checked }))}
+            />
+            <span>Actualizar automáticamente al reiniciar</span>
+          </label>
+        )}
+        <div className="btn-row">
+          <button className="ghost" onClick={() => void checkUpdate()} disabled={updChecking || updApplying}>
+            {updChecking ? 'Buscando…' : 'Buscar actualizaciones'}
+          </button>
+          {upd?.updateAvailable && (
+            <button className="primary" onClick={() => void applyUpdate()} disabled={updApplying}>
+              {updApplying ? 'Actualizando…' : 'Actualizar ahora'}
+            </button>
+          )}
+        </div>
+        {updLog && <pre className="update-log">{updLog}</pre>}
+        {upd?.updateAvailable && !updApplying && (
+          <p className="small">Tras «Actualizar ahora» (o simplemente al reiniciar la app) tendrás la versión nueva.</p>
+        )}
       </div>
     </div>
   );

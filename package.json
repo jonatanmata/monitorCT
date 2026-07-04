@@ -1,6 +1,6 @@
 {
   "name": "monitorct",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Monitoreo de red WISP con diagnóstico por IA (MikroTik, Mimosa, Ubiquiti)",
   "workspaces": [
@@ -10,7 +10,9 @@
   "scripts": {
     "dev": "concurrently -n server,web -c blue,green \"npm run dev -w server\" \"npm run dev -w web\"",
     "build": "npm run build -w web && npm run build -w server",
-    "start": "npm run start -w server",
+    "update": "node scripts/update.mjs",
+    "start": "node scripts/update.mjs && npm run start -w server",
+    "start:no-update": "npm run start -w server",
     "test": "npm run test -w server"
   },
   "devDependencies": {

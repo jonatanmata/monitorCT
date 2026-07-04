@@ -8,7 +8,8 @@ import { testSnmp } from '../pollers/snmp.js';
 import { lossMatrix, hourlyCorrelation } from '../pollers/probes.js';
 import { getThresholds } from '../alerts/engine.js';
 import { aiAvailable, resolveApiKey, saveApiKey, clearApiKey, testApiKey } from '../ai/agent.js';
-import { getTelegramConfigSafe, saveTelegramConfig, clearTelegramConfig, testTelegram } from '../alerts/telegram.js';
+import { getTelegramConfigSafe, saveTelegramConfig, clearTelegramConfig, testTelegram, detectChatIds } from '../alerts/telegram.js';
+import { getUpdateStatus, applyUpdate, setAutoUpdate } from '../update.js';
 
 interface NodeBody {
   type: NodeRow['type'];
@@ -375,5 +376,22 @@ export function registerApiRoutes(app: FastifyInstance): void {
   app.post('/api/settings/telegram/test', async (req) => {
     const b = (req.body ?? {}) as { botToken?: string; chatId?: string };
     return testTelegram(b);
+  });
+
+  /** Detecta el chat id automáticamente vía getUpdates (el usuario envía un mensaje al bot). */
+  app.post('/api/settings/telegram/detect-chat', async (req) => {
+    const b = (req.body ?? {}) as { botToken?: string };
+    return detectChatIds(b.botToken?.trim() || undefined);
+  });
+
+  // ---------- Actualizaciones (GitHub) ----------
+  app.get('/api/update/status', async () => getUpdateStatus());
+
+  app.post('/api/update/apply', async () => applyUpdate());
+
+  app.put('/api/update/auto', async (req) => {
+    const b = (req.body ?? {}) as { enabled?: boolean };
+    setAutoUpdate(Boolean(b.enabled));
+    return { ok: true, autoUpdate: Boolean(b.enabled) };
   });
 }

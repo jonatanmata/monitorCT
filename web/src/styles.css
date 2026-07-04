@@ -264,6 +264,11 @@ h3:first-child { margin-top: 0; }
 .key-status.ok { color: #6ee7b7; }
 .key-status.fail { color: #fda4af; }
 .key-status.pending { color: var(--text-muted); }
+.update-log {
+  margin-top: 10px; max-height: 200px; overflow: auto; white-space: pre-wrap;
+  background: var(--bg); border: 1px solid var(--border-soft); border-radius: var(--radius-sm);
+  padding: 8px 10px; font-size: 11px; color: var(--text-muted); font-family: ui-monospace, monospace;
+}
 
 /* ---------- Etiqueta de arista ---------- */
 .edge-label {

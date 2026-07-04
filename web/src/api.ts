@@ -100,4 +100,19 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  detectTelegramChat: (botToken?: string) =>
+    http<{ ok: boolean; chats: { id: string; name: string }[]; detail: string }>(
+      '/api/settings/telegram/detect-chat',
+      { method: 'POST', body: JSON.stringify(botToken ? { botToken } : {}) },
+    ),
+
+  updateStatus: () =>
+    http<{
+      hasGit: boolean; version: string; currentCommit: string | null; currentDate: string | null;
+      branch: string | null; updateAvailable: boolean; behindBy: number; latestMessage: string | null;
+      autoUpdate: boolean; note?: string;
+    }>('/api/update/status'),
+  applyUpdate: () => http<{ ok: boolean; log: string; restartRequired: boolean }>('/api/update/apply', { method: 'POST' }),
+  setAutoUpdate: (enabled: boolean) =>
+    http<{ ok: boolean; autoUpdate: boolean }>('/api/update/auto', { method: 'PUT', body: JSON.stringify({ enabled }) }),
 };
