@@ -8,6 +8,7 @@ import { DeviceNode, type DeviceFlowNode } from './DeviceNode';
 import type { ApiNode, ApiEdge, LiveNode, NodeType } from '../types';
 import { NODE_TYPE_LABELS, NODE_TYPE_ICONS } from '../types';
 import { api } from '../api';
+import { InfoTip } from '../components/InfoTip';
 
 const nodeTypes = { device: DeviceNode };
 
@@ -90,7 +91,10 @@ export function TopologyCanvas({ nodes, edges, live, onSelectNode, onSelectEdge,
   return (
     <div className="canvas-wrap">
       <div className="palette">
-        <div className="small" style={{ padding: '0 4px 4px' }}>Añadir equipo:</div>
+        <div className="small" style={{ padding: '0 4px 4px' }}>
+          Añadir equipo:
+          <InfoTip text="Este es el lienzo de tu red. Añade cada equipo con estos botones y conéctalos arrastrando desde el borde derecho de un nodo al borde izquierdo del siguiente, siguiendo el camino de la señal (ej. Gateway → MikroTik → PTP → MikroTik → AP → Cliente). El orden importa: es el grafo de dependencias que usa la IA para ubicar fallas — si un equipo cae, todo lo que cuelga de él se ve afectado. El color del borde muestra el estado en vivo: verde OK, amarillo con pérdida, rojo caído." />
+        </div>
         {(Object.keys(NODE_TYPE_LABELS) as NodeType[]).map((t) => (
           <button key={t} onClick={() => addNode(t)}>
             <span>{NODE_TYPE_ICONS[t]}</span> {NODE_TYPE_LABELS[t]}

@@ -120,3 +120,27 @@ h3:first-child { margin-top: 0; }
 
 .empty-hint { color: #64748b; font-size: 13px; padding: 20px 10px; text-align: center; }
 .small { font-size: 11px; color: #94a3b8; }
+
+/* Icono de ayuda "!" */
+.infotip { position: relative; display: inline-flex; margin-left: 6px; vertical-align: middle; }
+.infotip-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: #f59e0b; color: #0f1420; font-weight: 800; font-size: 11px;
+  cursor: help; user-select: none; line-height: 1;
+}
+.infotip-bubble {
+  position: absolute; z-index: 50; top: 20px; right: -8px;
+  width: 260px; padding: 9px 11px; border-radius: 8px;
+  background: #1e293b; border: 1px solid #f59e0b66; color: #e2e8f0;
+  font-size: 12px; font-weight: 400; line-height: 1.45; white-space: normal;
+  box-shadow: 0 6px 20px #00000088; text-align: left;
+}
+.palette .infotip-bubble { right: auto; left: -8px; }
+
+/* Ajustes */
+.settings-section { background: #1e293b; border-radius: 8px; padding: 12px; margin-bottom: 14px; }
+.key-status { margin-top: 8px; font-size: 12px; }
+.key-status.ok { color: #86efac; }
+.key-status.fail { color: #fca5a5; }
+.key-status.pending { color: #94a3b8; }

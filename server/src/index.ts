@@ -38,8 +38,9 @@ async function main(): Promise<void> {
 
   await app.listen({ port: PORT, host: '0.0.0.0' });
   console.log(`MonitorCt escuchando en http://localhost:${PORT}`);
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.warn('AVISO: ANTHROPIC_API_KEY no está configurada — el diagnóstico con IA estará deshabilitado.');
+  const { aiAvailable } = await import('./ai/agent.js');
+  if (!aiAvailable()) {
+    console.warn('AVISO: sin API key de Anthropic — el diagnóstico con IA está deshabilitado. Puedes agregarla desde la pestaña Ajustes (⚙) de la interfaz.');
   }
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { InfoTip } from '../components/InfoTip';
 
 interface ChatMsg {
   role: 'user' | 'assistant' | 'tool';
@@ -64,18 +65,30 @@ export function ChatPanel({ aiAvailable, send, registerHandler }: Props) {
     send({ type: 'chat', sessionId: sessionIdRef.current, text });
   };
 
+  const header = (
+    <h3 style={{ marginBottom: 8 }}>
+      Diagnóstico con IA
+      <InfoTip text="Chat con un agente de IA (Claude) que actúa como ingeniero de diagnóstico de TU red: conoce la topología que dibujaste y el síntoma de pérdida hacia internet, y puede consultar métricas históricas, hacer pings en vivo (incluso desde los MikroTik con IP de origen LAN), leer la matriz de pérdida y correlacionar saturación por horas. Investiga con datos reales antes de responder — verás los pasos 🔧 mientras trabaja. Requiere la API key configurada en ⚙ Ajustes." />
+    </h3>
+  );
+
   if (!aiAvailable) {
     return (
-      <div className="empty-hint">
-        El diagnóstico con IA está deshabilitado.
-        <br /><br />
-        Configura <code>ANTHROPIC_API_KEY</code> en el archivo <code>.env</code> y reinicia el servidor.
+      <div>
+        {header}
+        <div className="empty-hint">
+          El diagnóstico con IA está deshabilitado.
+          <br /><br />
+          Agrega tu API key de Anthropic en la pestaña <b>⚙ Ajustes</b> — se guarda cifrada en este PC,
+          sin tocar archivos. (También sirve <code>ANTHROPIC_API_KEY</code> en el <code>.env</code>.)
+        </div>
       </div>
     );
   }
 
   return (
     <div className="chat">
+      {header}
       <div className="chat-messages">
         {messages.length === 0 && (
           <div className="empty-hint">

@@ -3,6 +3,7 @@ import type { ApiNode, NodeType } from '../types';
 import { NODE_TYPE_LABELS } from '../types';
 import { api } from '../api';
 import { MetricChart } from './MetricChart';
+import { InfoTip } from '../components/InfoTip';
 
 interface Props {
   node: ApiNode;
@@ -106,7 +107,10 @@ export function NodePanel({ node, onChanged, onDeleted }: Props) {
 
   return (
     <div>
-      <h3>Equipo: {node.name}</h3>
+      <h3>
+        Equipo: {node.name}
+        <InfoTip text="Configuración del equipo. Con la IP el sistema le hace ping cada 15 segundos. Con las credenciales correctas, además lee sus métricas cada 60 segundos: en MikroTik por API (CPU, memoria, tráfico, drops, colas) y en antenas por SNMP (señal, ruido, CCQ, SNR, capacidad). Usa «Probar conexión» después de guardar para validar cada protocolo." />
+      </h3>
       <div className="form-grid">
         <label>Nombre</label>
         <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -121,7 +125,7 @@ export function NodePanel({ node, onChanged, onDeleted }: Props) {
 
         {isMikrotik && (
           <>
-            <label>Usuario API</label>
+            <label>Usuario API<InfoTip text="Usuario del MikroTik para el protocolo API (puerto 8728). Habilítalo en el router: IP → Services → api. Basta un usuario con permisos de lectura + test (para poder ejecutar /ping). Se guarda cifrado en este PC." /></label>
             <input
               value={form.routerosUser}
               placeholder={node.hasRouterosCreds ? '(guardado — escribir para cambiar)' : 'admin'}
@@ -134,13 +138,13 @@ export function NodePanel({ node, onChanged, onDeleted }: Props) {
               placeholder={node.hasRouterosCreds ? '(guardada)' : ''}
               onChange={(e) => setForm({ ...form, routerosPass: e.target.value })}
             />
-            <label>Sondas externas</label>
+            <label>Sondas externas<InfoTip text="IPs de internet a las que ESTE MikroTik hará ping cada 60 s vía su comando /ping (separadas por coma). Recomendado: 8.8.8.8 y la IP pública del gateway del proveedor. Sirve para comparar la pérdida desde cada punto de la red y delimitar el segmento que falla." /></label>
             <input
               value={form.probeTargets}
               placeholder="8.8.8.8, IP gateway público"
               onChange={(e) => setForm({ ...form, probeTargets: e.target.value })}
             />
-            <label>IPs origen (src)</label>
+            <label>IPs origen (src)<InfoTip text="LA CLAVE de esta red: el ping normal del router NO pasa por las colas ni el FastTrack, por eso «nunca pierde» aunque el enlace esté saturado. Si aquí pones una IP LAN del router (ej. la de su interfaz hacia los clientes), el ping se envía con esa IP de origen y se enruta/NATea como tráfico de cliente — revelando la pérdida real que sufren los clientes. Separa varias con coma." /></label>
             <input
               value={form.probeSrcAddresses}
               placeholder="IP LAN del router (simula cliente)"
@@ -150,7 +154,7 @@ export function NodePanel({ node, onChanged, onDeleted }: Props) {
         )}
         {isSnmp && (
           <>
-            <label>Community SNMP</label>
+            <label>Community SNMP<InfoTip text="Contraseña de lectura SNMP de la antena (normalmente «public»). Habilita SNMP en el equipo: en Ubiquiti airOS → Services → SNMP Agent; en Mimosa → Preferences → Management → SNMP. Con esto el sistema lee señal, ruido, CCQ, SNR, capacidad airMAX y estaciones conectadas." /></label>
             <input
               value={form.snmpCommunity}
               placeholder="public"
@@ -187,7 +191,10 @@ export function NodePanel({ node, onChanged, onDeleted }: Props) {
         </div>
       )}
 
-      <h3>Historial</h3>
+      <h3>
+        Historial
+        <InfoTip text="Series de tiempo de las métricas recolectadas de este equipo. Los datos crudos se guardan 48 horas y los promedios de 5 minutos, 30 días — suficiente para ver patrones de horas pico. La gráfica se actualiza sola cada 30 segundos." />
+      </h3>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
         <select value={metric} onChange={(e) => setMetric(e.target.value)}>
           {[...new Set(['latency_ms', 'loss_pct', ...available])].map((m) => (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Alert } from '../types';
 import { api } from '../api';
+import { InfoTip } from '../components/InfoTip';
 
 export function AlertsPanel({ refreshKey }: { refreshKey: number }) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -12,12 +13,25 @@ export function AlertsPanel({ refreshKey }: { refreshKey: number }) {
     return () => clearInterval(t);
   }, [refreshKey]);
 
+  const header = (
+    <h3>
+      Alertas
+      <InfoTip text="Alertas automáticas por umbrales (configurables en ⚙ Ajustes): equipo caído, CPU alta, señal baja, pérdida alta y la crítica «saturación + pérdida» que delata las horas pico. Cada alerta nueva recibe un diagnóstico automático de la IA (🤖) que investiga la causa con los datos de la red. Se resuelven solas cuando la condición desaparece, o puedes marcarlas resueltas manualmente." />
+    </h3>
+  );
+
   if (alerts.length === 0) {
-    return <div className="empty-hint">Sin alertas. Cuando un umbral se supere aparecerán aquí con su diagnóstico IA.</div>;
+    return (
+      <div>
+        {header}
+        <div className="empty-hint">Sin alertas. Cuando un umbral se supere aparecerán aquí con su diagnóstico IA.</div>
+      </div>
+    );
   }
 
   return (
     <div>
+      {header}
       {alerts.map((a) => (
         <div key={a.id} className={`alert-item ${a.severity} ${a.resolved_at ? 'resolved' : ''}`}>
           <div>{a.message}</div>

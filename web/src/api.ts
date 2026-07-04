@@ -56,7 +56,22 @@ export const api = {
   alerts: () => http<{ alerts: Alert[] }>('/api/alerts'),
   resolveAlert: (id: number) => http<{ ok: boolean }>(`/api/alerts/${id}/resolve`, { method: 'POST' }),
 
-  settings: () => http<{ thresholds: Record<string, number>; pcProbeTargets: string[] }>('/api/settings'),
-  saveSettings: (body: { thresholds?: Record<string, number>; pcProbeTargets?: string[] }) =>
-    http<{ ok: boolean }>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
+  settings: () =>
+    http<{
+      thresholds: Record<string, number>;
+      pcProbeTargets: string[];
+      hasApiKey: boolean;
+      apiKeySource: 'env' | 'ui' | null;
+    }>('/api/settings'),
+  saveSettings: (body: {
+    thresholds?: Record<string, number>;
+    pcProbeTargets?: string[];
+    anthropicApiKey?: string;
+    clearApiKey?: boolean;
+  }) => http<{ ok: boolean; hasApiKey: boolean }>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
+  testApiKey: (key?: string) =>
+    http<{ ok: boolean; detail: string }>('/api/settings/test-api-key', {
+      method: 'POST',
+      body: JSON.stringify(key ? { key } : {}),
+    }),
 };

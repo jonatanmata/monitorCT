@@ -4,12 +4,13 @@ import { NodePanel } from './panels/NodePanel';
 import { EdgePanel } from './panels/EdgePanel';
 import { AlertsPanel } from './panels/AlertsPanel';
 import { SaturationPanel } from './panels/SaturationPanel';
+import { SettingsPanel } from './panels/SettingsPanel';
 import { ChatPanel } from './chat/ChatPanel';
 import { api } from './api';
 import { useWebSocket } from './ws';
 import type { ApiNode, ApiEdge, LiveNode } from './types';
 
-type Tab = 'nodo' | 'alertas' | 'saturacion' | 'ia';
+type Tab = 'nodo' | 'alertas' | 'saturacion' | 'ia' | 'ajustes';
 
 type ChatHandler = (event: string, data: { sessionId: string; text?: string; name?: string; error?: string }) => void;
 
@@ -88,6 +89,7 @@ export default function App() {
             </button>
             <button className={tab === 'saturacion' ? 'active' : ''} onClick={() => setTab('saturacion')}>Saturación</button>
             <button className={tab === 'ia' ? 'active' : ''} onClick={() => setTab('ia')}>🤖 IA</button>
+            <button className={tab === 'ajustes' ? 'active' : ''} onClick={() => setTab('ajustes')} title="Ajustes">⚙</button>
           </div>
           <div className="tab-content">
             {tab === 'nodo' && selectedNode && (
@@ -116,6 +118,7 @@ export default function App() {
             {tab === 'alertas' && <AlertsPanel refreshKey={alertRefresh} />}
             {tab === 'saturacion' && <SaturationPanel edges={edges} nodes={nodes} />}
             {tab === 'ia' && <ChatPanel aiAvailable={aiAvailable} send={send} registerHandler={registerChatHandler} />}
+            {tab === 'ajustes' && <SettingsPanel onAiChanged={reload} />}
           </div>
         </div>
       </div>

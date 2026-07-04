@@ -7,7 +7,7 @@ import { testConnection as testMikrotik } from '../pollers/mikrotik.js';
 import { testSnmp } from '../pollers/snmp.js';
 import { lossMatrix, hourlyCorrelation } from '../pollers/probes.js';
 import { getThresholds } from '../alerts/engine.js';
-import { aiAvailable } from '../ai/agent.js';
+import { aiAvailable, resolveApiKey, saveApiKey, clearApiKey, testApiKey } from '../ai/agent.js';
 
 interface NodeBody {
   type: NodeRow['type'];
@@ -234,12 +234,28 @@ export function registerApiRoutes(app: FastifyInstance): void {
   app.get('/api/settings', async () => ({
     thresholds: getThresholds(),
     pcProbeTargets: JSON.parse(getSetting('pc_probe_targets', '["8.8.8.8"]')),
+    // Nunca se devuelve la clave; solo si hay una y de dónde viene
+    hasApiKey: aiAvailable(),
+    apiKeySource: process.env.ANTHROPIC_API_KEY ? 'env' : resolveApiKey() ? 'ui' : null,
   }));
 
   app.put('/api/settings', async (req) => {
-    const b = req.body as { thresholds?: Record<string, number>; pcProbeTargets?: string[] };
+    const b = req.body as {
+      thresholds?: Record<string, number>;
+      pcProbeTargets?: string[];
+      anthropicApiKey?: string;      // guardarla cifrada en la BD local
+      clearApiKey?: boolean;         // borrar la guardada desde la UI
+    };
     if (b.thresholds) setSetting('thresholds', JSON.stringify(b.thresholds));
     if (b.pcProbeTargets) setSetting('pc_probe_targets', JSON.stringify(b.pcProbeTargets));
-    return { ok: true };
+    if (b.clearApiKey) clearApiKey();
+    else if (b.anthropicApiKey) saveApiKey(b.anthropicApiKey.trim());
+    return { ok: true, hasApiKey: aiAvailable() };
+  });
+
+  /** Valida una clave (la enviada, o la configurada si no se envía) sin gastar tokens. */
+  app.post('/api/settings/test-api-key', async (req) => {
+    const b = (req.body ?? {}) as { key?: string };
+    return testApiKey(b.key?.trim() || undefined);
   });
 }

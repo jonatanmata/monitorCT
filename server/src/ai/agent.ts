@@ -1,16 +1,53 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { db, type NodeRow, type EdgeRow } from '../db/index.js';
+import { db, getSetting, setSetting, type NodeRow, type EdgeRow } from '../db/index.js';
+import { encryptJson, decryptJson } from '../db/crypto.js';
 import { toolDefinitions, executeTool } from './tools.js';
 
 const MODEL = 'claude-opus-4-8';
 const MAX_ITERATIONS = 12;
 
+/**
+ * La API key puede venir de dos lugares (en este orden):
+ *  1. Variable de entorno ANTHROPIC_API_KEY (.env) — opcional
+ *  2. Guardada desde la interfaz (pestaña Ajustes), cifrada en SQLite
+ */
+export function resolveApiKey(): string | null {
+  if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY;
+  const stored = decryptJson<{ key?: string }>(getSetting('anthropic_api_key_enc', ''), {});
+  return stored.key || null;
+}
+
+export function saveApiKey(key: string): void {
+  setSetting('anthropic_api_key_enc', encryptJson({ key }));
+  client = null; // el próximo uso crea el cliente con la clave nueva
+}
+
+export function clearApiKey(): void {
+  setSetting('anthropic_api_key_enc', '');
+  client = null;
+}
+
+/** Valida una clave con count_tokens (endpoint gratuito, no gasta tokens). */
+export async function testApiKey(key?: string): Promise<{ ok: boolean; detail: string }> {
+  const apiKey = key || resolveApiKey();
+  if (!apiKey) return { ok: false, detail: 'No hay API key configurada' };
+  try {
+    const test = new Anthropic({ apiKey });
+    await test.messages.countTokens({ model: MODEL, messages: [{ role: 'user', content: 'hola' }] });
+    return { ok: true, detail: 'Clave válida — el diagnóstico con IA está activo' };
+  } catch (err) {
+    if (err instanceof Anthropic.AuthenticationError) return { ok: false, detail: 'Clave inválida o revocada' };
+    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 let client: Anthropic | null = null;
 function getClient(): Anthropic {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('Falta ANTHROPIC_API_KEY en el archivo .env — el diagnóstico con IA requiere una API key de Anthropic.');
+  const apiKey = resolveApiKey();
+  if (!apiKey) {
+    throw new Error('No hay API key de Anthropic configurada. Agrégala en la pestaña Ajustes (⚙) o en el archivo .env.');
   }
-  if (!client) client = new Anthropic();
+  if (!client) client = new Anthropic({ apiKey });
   return client;
 }
 
@@ -142,5 +179,5 @@ export async function diagnoseAlert(alertId: number): Promise<void> {
 }
 
 export function aiAvailable(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  return Boolean(resolveApiKey());
 }

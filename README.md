@@ -20,16 +20,20 @@ Sistema de monitoreo para redes inalámbricas de campo (WISP) con equipos **Mikr
 ## Instalación en Windows
 
 ```bat
-git clone <este-repo> MonitorCt   (o copiar la carpeta)
+git clone https://github.com/jonatanmata/monitorCT.git MonitorCt   (o copiar la carpeta)
 cd MonitorCt
 npm install
 copy .env.example .env
-notepad .env                      (poner ANTHROPIC_API_KEY y un SECRET_KEY aleatorio)
+notepad .env                      (opcional: poner un SECRET_KEY aleatorio)
 npm run build
 npm start
 ```
 
 Abrir **http://localhost:3000** en el navegador.
+
+> 💡 **La API key de la IA se configura desde la propia interfaz** (pestaña **⚙ Ajustes**): se valida contra Anthropic y se guarda **cifrada** en la base local — no hace falta editar el `.env`. La variable `ANTHROPIC_API_KEY` del `.env` sigue funcionando y tiene prioridad si existe.
+>
+> Cada módulo de la interfaz tiene un icono **!** naranja con la explicación de qué hace y cómo interpretarlo.
 
 ### Ejecutar como servicio de Windows (opcional)
 
