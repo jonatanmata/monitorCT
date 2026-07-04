@@ -1,6 +1,7 @@
 import { db, getSetting } from '../db/index.js';
 import { getLiveNode, broadcast } from '../state.js';
 import type { NodeRow, EdgeRow } from '../db/index.js';
+import { sendTelegram, formatAlertMessage } from './telegram.js';
 
 export interface Thresholds {
   cpuPct: number;
@@ -49,6 +50,8 @@ function raise(key: OpenAlertKey, severity: 'info' | 'warning' | 'critical', mes
     .run(key.nodeId, key.edgeId, severity, key.type, message);
   const id = Number(res.lastInsertRowid);
   broadcast('alert', { id, ...key, severity, message });
+  // Notificación a Telegram (si está configurado); no bloquea la evaluación
+  void sendTelegram(formatAlertMessage({ severity, type: key.type, message }));
   return id;
 }
 

@@ -25,12 +25,20 @@ export function SettingsPanel({ onAiChanged }: Props) {
   const [targets, setTargets] = useState('');
   const [saved, setSaved] = useState(false);
 
+  // Telegram
+  const [tg, setTg] = useState<{ enabled: boolean; hasToken: boolean; chatId: string }>({ enabled: false, hasToken: false, chatId: '' });
+  const [tgToken, setTgToken] = useState('');
+  const [tgChatId, setTgChatId] = useState('');
+  const [tgStatus, setTgStatus] = useState<KeyStatus>(null);
+
   const load = () =>
     api.settings().then((s) => {
       setHasApiKey(s.hasApiKey);
       setApiKeySource(s.apiKeySource);
       setThresholds(s.thresholds);
       setTargets(s.pcProbeTargets.join(', '));
+      setTg(s.telegram);
+      setTgChatId(s.telegram.chatId);
     }).catch(() => {});
 
   useEffect(() => { void load(); }, []);
@@ -61,6 +69,38 @@ export function SettingsPanel({ onAiChanged }: Props) {
     setKeyStatus(null);
     await load();
     onAiChanged();
+  };
+
+  const saveTelegram = async () => {
+    setTgStatus({ kind: 'pending', text: 'Guardando y probando el envío…' });
+    try {
+      // Guardar primero (token/chatId nuevos) y luego enviar prueba real
+      await api.saveTelegram({
+        enabled: true,
+        botToken: tgToken.trim() || undefined,
+        chatId: tgChatId.trim() || undefined,
+      });
+      const test = await api.testTelegram({});
+      setTgStatus({ kind: test.ok ? 'ok' : 'fail', text: test.detail });
+      setTgToken('');
+      await load();
+    } catch (err) {
+      setTgStatus({ kind: 'fail', text: String(err) });
+    }
+  };
+
+  const toggleTelegram = async (enabled: boolean) => {
+    await api.saveTelegram({ enabled });
+    await load();
+  };
+
+  const removeTelegram = async () => {
+    if (!confirm('¿Borrar la configuración de Telegram? Dejarás de recibir alertas allí.')) return;
+    await api.saveTelegram({ clear: true });
+    setTgToken('');
+    setTgChatId('');
+    setTgStatus(null);
+    await load();
   };
 
   const saveGeneral = async () => {
@@ -142,6 +182,66 @@ export function SettingsPanel({ onAiChanged }: Props) {
           placeholder="8.8.8.8, IP gateway público"
           onChange={(e) => setTargets(e.target.value)}
         />
+      </div>
+
+      <div className="settings-section">
+        <h3>
+          ✈️ Alertas por Telegram
+          <InfoTip text="Recibe las alertas (y sus diagnósticos de IA) en tu Telegram. Cómo obtener los datos: 1) En Telegram habla con @BotFather, envía /newbot y sigue los pasos — te da el TOKEN del bot. 2) Envíale cualquier mensaje a tu nuevo bot. 3) El CHAT ID: habla con @userinfobot y te lo dice, o para un grupo agrega el bot al grupo y usa el id del grupo. Pega ambos aquí y pulsa «Guardar y probar»: te llegará un mensaje de prueba." />
+        </h3>
+        {tg.hasToken ? (
+          <div>
+            <div className="key-status ok">✔ Bot configurado{tg.chatId ? ` · chat ${tg.chatId}` : ''}</div>
+            <label className="switch-row" style={{ marginTop: 10 }}>
+              <input type="checkbox" checked={tg.enabled} onChange={(e) => void toggleTelegram(e.target.checked)} />
+              <span>{tg.enabled ? 'Notificaciones activadas' : 'Notificaciones pausadas'}</span>
+            </label>
+            <div className="btn-row">
+              <button className="ghost" onClick={() => void api.testTelegram({}).then((r) => setTgStatus({ kind: r.ok ? 'ok' : 'fail', text: r.detail }))}>
+                Enviar prueba
+              </button>
+              <button className="danger" onClick={() => void removeTelegram()}>Borrar</button>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <input
+                type="password"
+                placeholder="Reemplazar token del bot (opcional)"
+                value={tgToken}
+                onChange={(e) => setTgToken(e.target.value)}
+              />
+              <input
+                style={{ marginTop: 6 }}
+                placeholder="Chat id"
+                value={tgChatId}
+                onChange={(e) => setTgChatId(e.target.value)}
+              />
+              <div className="btn-row">
+                <button className="primary" onClick={() => void saveTelegram()}>Guardar y probar</button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <input
+              type="password"
+              placeholder="Token del bot (de @BotFather)"
+              value={tgToken}
+              onChange={(e) => setTgToken(e.target.value)}
+            />
+            <input
+              style={{ marginTop: 6 }}
+              placeholder="Chat id (de @userinfobot)"
+              value={tgChatId}
+              onChange={(e) => setTgChatId(e.target.value)}
+            />
+            <div className="btn-row">
+              <button className="primary" onClick={() => void saveTelegram()} disabled={!tgToken.trim() || !tgChatId.trim()}>
+                Guardar y probar
+              </button>
+            </div>
+          </div>
+        )}
+        {tgStatus && <div className={`key-status ${tgStatus.kind}`}>{tgStatus.text}</div>}
       </div>
 
       <div className="settings-section">

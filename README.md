@@ -8,6 +8,7 @@ Sistema de monitoreo para redes inalámbricas de campo (WISP) con equipos **Mikr
 - 🔥 **Detección de saturación**: % de utilización por enlace, drops de cola, matriz de pérdida por origen→destino y mapa de calor por hora del día para confirmar problemas de horas pico.
 - 🚨 **Alertas** por umbrales (CPU, señal, pérdida, nodo caído, saturación+pérdida).
 - 🤖 **Diagnóstico con IA (Claude)**: un chat donde la IA investiga tu red con herramientas reales (métricas, pings en vivo, matriz de pérdida) y te dice el punto de falla más probable. Las alertas nuevas reciben diagnóstico automático.
+- ✈️ **Alertas por Telegram**: recibe las alertas y sus diagnósticos de IA directamente en tu Telegram (configurable desde la interfaz, sin tocar archivos).
 
 ## Requisitos
 

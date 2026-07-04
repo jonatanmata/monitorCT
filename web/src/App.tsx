@@ -69,6 +69,8 @@ export default function App() {
           nodes={nodes}
           edges={edges}
           live={live}
+          selectedNodeId={selectedNodeId}
+          selectedEdgeId={selectedEdgeId}
           onSelectNode={(id) => {
             setSelectedNodeId(id);
             setSelectedEdgeId(null);

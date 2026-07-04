@@ -9,40 +9,38 @@ export type DeviceNodeData = {
 
 export type DeviceFlowNode = Node<DeviceNodeData, 'device'>;
 
-const SUMMARY_LABELS: Record<string, string> = {
-  cpu_pct: 'CPU',
-  signal_dbm: 'Señal',
-  ccq_pct: 'CCQ',
-  snr_db: 'SNR',
-  stations: 'Estac.',
+const SUMMARY_LABELS: Record<string, { label: string; unit: string }> = {
+  cpu_pct: { label: 'CPU', unit: '%' },
+  signal_dbm: { label: 'Señal', unit: ' dBm' },
+  ccq_pct: { label: 'CCQ', unit: '%' },
+  snr_db: { label: 'SNR', unit: ' dB' },
+  stations: { label: 'Estac.', unit: '' },
 };
 
-export function DeviceNode({ data }: NodeProps<DeviceFlowNode>) {
+export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
   const { node, live } = data;
   const status = live?.status ?? 'unknown';
-  const stats: string[] = [];
-  if (live?.latencyMs != null) stats.push(`${live.latencyMs.toFixed(0)} ms`);
-  if (live?.lossPct != null && live.lossPct > 0) stats.push(`pérd ${live.lossPct}%`);
-  for (const [key, label] of Object.entries(SUMMARY_LABELS)) {
+  const chips: string[] = [];
+  if (live?.latencyMs != null) chips.push(`${live.latencyMs.toFixed(0)} ms`);
+  if (live?.lossPct != null && live.lossPct > 0) chips.push(`pérd ${live.lossPct}%`);
+  for (const [key, { label, unit }] of Object.entries(SUMMARY_LABELS)) {
     const v = live?.summary?.[key];
-    if (v !== undefined) {
-      const unit = key === 'cpu_pct' || key === 'ccq_pct' ? '%' : key === 'signal_dbm' ? ' dBm' : key === 'snr_db' ? ' dB' : '';
-      stats.push(`${label} ${v}${unit}`);
-    }
+    if (v !== undefined) chips.push(`${label} ${v}${unit}`);
   }
 
   return (
-    <div className={`device-node status-${status}`}>
+    <div className={`device-node status-${status} ${selected ? 'selected' : ''}`}>
       <Handle type="target" position={Position.Left} />
-      <div className="dn-title">
-        <span>{NODE_TYPE_ICONS[node.type]}</span>
-        <span>{node.name}</span>
+      <div className="dn-header">
+        <span className="dn-icon">{NODE_TYPE_ICONS[node.type]}</span>
+        <span className="dn-title">{node.name}</span>
+        <span className={`dn-dot ${status}`} />
       </div>
       {node.ip && <div className="dn-ip">{node.ip}</div>}
-      {stats.length > 0 && (
+      {chips.length > 0 && (
         <div className="dn-stats">
-          {stats.map((s, i) => (
-            <span key={i}>{s}</span>
+          {chips.map((s, i) => (
+            <span key={i} className="dn-chip">{s}</span>
           ))}
         </div>
       )}

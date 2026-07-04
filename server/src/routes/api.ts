@@ -8,6 +8,7 @@ import { testSnmp } from '../pollers/snmp.js';
 import { lossMatrix, hourlyCorrelation } from '../pollers/probes.js';
 import { getThresholds } from '../alerts/engine.js';
 import { aiAvailable, resolveApiKey, saveApiKey, clearApiKey, testApiKey } from '../ai/agent.js';
+import { getTelegramConfigSafe, saveTelegramConfig, clearTelegramConfig, testTelegram } from '../alerts/telegram.js';
 
 interface NodeBody {
   type: NodeRow['type'];
@@ -237,6 +238,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
     // Nunca se devuelve la clave; solo si hay una y de dónde viene
     hasApiKey: aiAvailable(),
     apiKeySource: process.env.ANTHROPIC_API_KEY ? 'env' : resolveApiKey() ? 'ui' : null,
+    telegram: getTelegramConfigSafe(),
   }));
 
   app.put('/api/settings', async (req) => {
@@ -257,5 +259,18 @@ export function registerApiRoutes(app: FastifyInstance): void {
   app.post('/api/settings/test-api-key', async (req) => {
     const b = (req.body ?? {}) as { key?: string };
     return testApiKey(b.key?.trim() || undefined);
+  });
+
+  // ---------- Telegram ----------
+  app.put('/api/settings/telegram', async (req) => {
+    const b = req.body as { enabled?: boolean; botToken?: string; chatId?: string; clear?: boolean };
+    if (b.clear) clearTelegramConfig();
+    else saveTelegramConfig({ enabled: b.enabled, botToken: b.botToken, chatId: b.chatId });
+    return { ok: true, telegram: getTelegramConfigSafe() };
+  });
+
+  app.post('/api/settings/telegram/test', async (req) => {
+    const b = (req.body ?? {}) as { botToken?: string; chatId?: string };
+    return testTelegram(b);
   });
 }

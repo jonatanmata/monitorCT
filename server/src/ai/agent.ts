@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { db, getSetting, setSetting, type NodeRow, type EdgeRow } from '../db/index.js';
 import { encryptJson, decryptJson } from '../db/crypto.js';
 import { toolDefinitions, executeTool } from './tools.js';
+import { sendTelegram, formatDiagnosisMessage } from '../alerts/telegram.js';
 
 const MODEL = 'claude-opus-4-8';
 const MAX_ITERATIONS = 12;
@@ -172,6 +173,7 @@ export async function diagnoseAlert(alertId: number): Promise<void> {
       },
     ]);
     db.prepare('UPDATE alerts SET ai_diagnosis = ? WHERE id = ?').run(finalText, alertId);
+    if (finalText) void sendTelegram(formatDiagnosisMessage(alert.message, finalText));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     db.prepare('UPDATE alerts SET ai_diagnosis = ? WHERE id = ?').run(`(No fue posible el diagnóstico IA: ${msg})`, alertId);

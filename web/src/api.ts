@@ -62,6 +62,7 @@ export const api = {
       pcProbeTargets: string[];
       hasApiKey: boolean;
       apiKeySource: 'env' | 'ui' | null;
+      telegram: { enabled: boolean; hasToken: boolean; chatId: string };
     }>('/api/settings'),
   saveSettings: (body: {
     thresholds?: Record<string, number>;
@@ -73,5 +74,16 @@ export const api = {
     http<{ ok: boolean; detail: string }>('/api/settings/test-api-key', {
       method: 'POST',
       body: JSON.stringify(key ? { key } : {}),
+    }),
+
+  saveTelegram: (body: { enabled?: boolean; botToken?: string; chatId?: string; clear?: boolean }) =>
+    http<{ ok: boolean; telegram: { enabled: boolean; hasToken: boolean; chatId: string } }>(
+      '/api/settings/telegram',
+      { method: 'PUT', body: JSON.stringify(body) },
+    ),
+  testTelegram: (body: { botToken?: string; chatId?: string }) =>
+    http<{ ok: boolean; detail: string }>('/api/settings/telegram/test', {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
 };
