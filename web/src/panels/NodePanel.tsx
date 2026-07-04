@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ApiNode, NodeType } from '../types';
-import { NODE_TYPE_LABELS } from '../types';
+import { NODE_TYPE_LABELS, ADDABLE_TYPES } from '../types';
 import { api } from '../api';
 import { MetricChart } from './MetricChart';
 import { InfoTip } from '../components/InfoTip';
@@ -105,6 +105,29 @@ export function NodePanel({ node, onChanged, onDeleted }: Props) {
   const isMikrotik = form.type === 'mikrotik';
   const isSnmp = form.type === 'ptp-mimosa' || form.type === 'ap-ubiquiti' || form.type === 'cliente';
 
+  // El nodo Monitor (PC) es la raíz: sin IP/credenciales/borrado; solo nombre.
+  if (node.type === 'monitor') {
+    return (
+      <div>
+        <h3>
+          💻 {node.name}
+          <InfoTip text="Este es el PC de monitoreo: la raíz de tu red y el origen de las sondas hacia internet (que se configuran en ⚙ Ajustes → «Sondas desde este PC»). Conéctalo al primer equipo arrastrando desde el punto azul de su borde derecho, y desde ahí construye la cadena hacia afuera. No se puede eliminar." />
+        </h3>
+        <div className="form-grid">
+          <label>Nombre</label>
+          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        </div>
+        <div className="btn-row">
+          <button className="primary" onClick={() => void save()}>Guardar</button>
+        </div>
+        <p className="small" style={{ marginTop: 14 }}>
+          Para «romper el hilo» y meter equipos intermedios (por ejemplo los 2 radios de un PTP),
+          pasa el mouse sobre una conexión y pulsa el botón <b>+</b> que aparece en la mitad de la línea.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div>
       <h3>
@@ -116,8 +139,8 @@ export function NodePanel({ node, onChanged, onDeleted }: Props) {
         <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         <label>Tipo</label>
         <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as NodeType })}>
-          {Object.entries(NODE_TYPE_LABELS).map(([v, l]) => (
-            <option key={v} value={v}>{l}</option>
+          {ADDABLE_TYPES.map((v) => (
+            <option key={v} value={v}>{NODE_TYPE_LABELS[v]}</option>
           ))}
         </select>
         <label>IP</label>

@@ -1,7 +1,9 @@
 -- Esquema de MonitorCt
 CREATE TABLE IF NOT EXISTS nodes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  type TEXT NOT NULL CHECK (type IN ('gateway-isp','mikrotik','ptp-mimosa','ap-ubiquiti','cliente')),
+  -- Tipos válidos ('monitor','gateway-isp','mikrotik','ptp-mimosa','ap-ubiquiti','cliente'),
+  -- validados en la capa API (sin CHECK aquí para poder añadir tipos sin recrear la tabla).
+  type TEXT NOT NULL,
   name TEXT NOT NULL,
   ip TEXT NOT NULL DEFAULT '',
   pos_x REAL NOT NULL DEFAULT 0,

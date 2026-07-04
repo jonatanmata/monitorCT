@@ -2,7 +2,7 @@
 
 Sistema de monitoreo para redes inalámbricas de campo (WISP) con equipos **MikroTik**, **PTP Mimosa** y **Ubiquiti airMAX**. Corre en un PC Windows dentro de la red y ofrece:
 
-- 🗺️ **Constructor visual de topología**: dibuja tu red (gateway, MikroTiks, PTPs, APs, clientes) arrastrando nodos y conectándolos según el camino de la señal.
+- 🗺️ **Constructor visual de topología**: parte del nodo base 💻 **Monitor (PC)** — la raíz de la red — y ve conectando equipos hacia afuera según el camino de la señal. Puedes **"romper el hilo"** de cualquier conexión con el botón **+** para insertar equipos intermedios (un PTP inserta sus 2 antenas automáticamente).
 - 📊 **Monitoreo automático**: ping cada 15 s a todos los equipos; cada 60 s lee CPU/memoria/tráfico/drops de los MikroTik (API RouterOS) y señal/ruido/CCQ/SNR/capacidad de las antenas (SNMP).
 - 🌐 **Sondas hacia internet**: mide pérdida a 8.8.8.8 y al gateway público **desde el PC** y **desde cada MikroTik** (incluso con `src-address` LAN para simular tráfico de cliente — el ping normal del router no pasa por las colas y esconde la saturación).
 - 🔥 **Detección de saturación**: % de utilización por enlace, drops de cola, matriz de pérdida por origen→destino y mapa de calor por hora del día para confirmar problemas de horas pico.

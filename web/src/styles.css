@@ -284,6 +284,42 @@ h3:first-child { margin-top: 0; }
 .react-flow__minimap { border-radius: var(--radius-sm); border: 1px solid var(--border-soft); }
 .react-flow__attribution { display: none; }
 
+/* Botón «+» para insertar equipo en un enlace (romper el hilo) */
+.edge-insert-btn {
+  position: absolute; pointer-events: all;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--accent-soft);
+  border: 1.5px solid var(--accent); font-size: 16px; font-weight: 700; line-height: 1;
+  cursor: pointer; opacity: 0.35; transition: opacity 0.15s, transform 0.15s, background 0.15s;
+  padding: 0;
+}
+.edge-insert-btn:hover { opacity: 1; transform: translate(-50%, -50%) scale(1.15) !important; background: var(--accent); color: #fff; }
+.react-flow__edge:hover .edge-insert-btn { opacity: 1; }
+
+/* Menú flotante de inserción */
+.insert-menu-overlay { position: fixed; inset: 0; z-index: 40; }
+.insert-menu {
+  position: fixed; z-index: 41; min-width: 200px;
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 8px; animation: tip-in 0.12s ease;
+}
+.insert-menu-title { font-size: 11px; color: var(--text-muted); padding: 2px 8px 6px; }
+.insert-menu button {
+  display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px;
+  background: transparent; color: var(--text); border: none; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 13px; text-align: left; transition: background 0.12s;
+}
+.insert-menu button:hover { background: var(--surface-hover); }
+.insert-hint { margin-left: auto; font-size: 10px; color: var(--warn); background: rgba(245,158,11,0.12); padding: 1px 6px; border-radius: 6px; }
+
+/* Nodo Monitor (raíz) */
+.device-node.monitor-node {
+  background: linear-gradient(160deg, #1b2740, #141c2e);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-glow), var(--shadow-sm);
+}
+
 /* Cartel de bienvenida en el lienzo vacío */
 .canvas-welcome {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);

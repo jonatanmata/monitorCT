@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { db, getSetting, setSetting, type NodeRow, type EdgeRow, type Credentials } from '../db/index.js';
+import { db, getSetting, setSetting, NODE_TYPES, type NodeRow, type EdgeRow, type Credentials, type NodeType } from '../db/index.js';
 import { encryptJson, decryptJson } from '../db/crypto.js';
 import { allLiveNodes, dropLiveNode } from '../state.js';
 import { pingHost } from '../pollers/ping.js';
@@ -20,6 +20,18 @@ interface NodeBody {
   probeTargets?: string[];
   probeSrcAddresses?: string[];
   enabled?: boolean;
+}
+
+const TYPE_DEFAULT_NAME: Record<NodeType, string> = {
+  'monitor': 'PC de monitoreo',
+  'gateway-isp': 'Gateway / ISP',
+  'mikrotik': 'MikroTik',
+  'ptp-mimosa': 'PTP Mimosa',
+  'ap-ubiquiti': 'AP Ubiquiti',
+  'cliente': 'Cliente',
+};
+function defaultNameForType(type: NodeType): string {
+  return TYPE_DEFAULT_NAME[type] ?? type;
 }
 
 function nodeToJson(n: NodeRow) {
@@ -48,8 +60,10 @@ export function registerApiRoutes(app: FastifyInstance): void {
     return { nodes, edges, live: allLiveNodes(), aiAvailable: aiAvailable() };
   });
 
-  app.post('/api/nodes', async (req) => {
+  app.post('/api/nodes', async (req, reply) => {
     const b = req.body as NodeBody;
+    if (!NODE_TYPES.includes(b.type)) return reply.code(400).send({ error: 'Tipo de equipo inválido' });
+    if (b.type === 'monitor') return reply.code(400).send({ error: 'El nodo Monitor es único y se crea automáticamente' });
     const res = db
       .prepare(
         `INSERT INTO nodes (type, name, ip, pos_x, pos_y, credentials_enc, probe_targets, probe_src_addresses, enabled)
@@ -103,8 +117,12 @@ export function registerApiRoutes(app: FastifyInstance): void {
     return nodeToJson(node);
   });
 
-  app.delete('/api/nodes/:id', async (req) => {
+  app.delete('/api/nodes/:id', async (req, reply) => {
     const id = parseInt((req.params as { id: string }).id, 10);
+    const node = db.prepare('SELECT type FROM nodes WHERE id = ?').get(id) as { type: NodeType } | undefined;
+    if (node?.type === 'monitor') {
+      return reply.code(400).send({ error: 'El nodo Monitor (PC) es la raíz de la red y no se puede eliminar' });
+    }
     db.prepare('DELETE FROM nodes WHERE id = ?').run(id);
     dropLiveNode(id);
     return { ok: true };
@@ -136,6 +154,69 @@ export function registerApiRoutes(app: FastifyInstance): void {
     const id = parseInt((req.params as { id: string }).id, 10);
     db.prepare('DELETE FROM edges WHERE id = ?').run(id);
     return { ok: true };
+  });
+
+  /**
+   * "Romper el hilo": inserta una cadena de nodos dentro de un enlace existente.
+   * A→B pasa a A→c1→…→cn→B. La primera arista hereda capacidad/interfaz del original
+   * (mismo primer salto desde A); las demás quedan en blanco para configurar.
+   */
+  app.post('/api/edges/:id/split', async (req, reply) => {
+    const edgeId = parseInt((req.params as { id: string }).id, 10);
+    const b = req.body as { nodes: { type: NodeType; name?: string }[] };
+    const chain = Array.isArray(b?.nodes) ? b.nodes : [];
+    if (chain.length === 0) return reply.code(400).send({ error: 'Debe indicar al menos un equipo a insertar' });
+    for (const c of chain) {
+      if (!NODE_TYPES.includes(c.type) || c.type === 'monitor') {
+        return reply.code(400).send({ error: `Tipo inválido para insertar: ${c.type}` });
+      }
+    }
+
+    const edge = db.prepare('SELECT * FROM edges WHERE id = ?').get(edgeId) as EdgeRow | undefined;
+    if (!edge) return reply.code(404).send({ error: 'Enlace no encontrado' });
+    const src = db.prepare('SELECT pos_x, pos_y FROM nodes WHERE id = ?').get(edge.source_id) as { pos_x: number; pos_y: number } | undefined;
+    const tgt = db.prepare('SELECT pos_x, pos_y FROM nodes WHERE id = ?').get(edge.target_id) as { pos_x: number; pos_y: number } | undefined;
+    const ax = src?.pos_x ?? 0, ay = src?.pos_y ?? 0;
+    const bx = tgt?.pos_x ?? ax + 200, by = tgt?.pos_y ?? ay;
+
+    const insertNode = db.prepare(
+      `INSERT INTO nodes (type, name, pos_x, pos_y) VALUES (?, ?, ?, ?)`,
+    );
+    const insertEdge = db.prepare(
+      'INSERT INTO edges (source_id, target_id, label, capacity_mbps, source_interface) VALUES (?, ?, ?, ?, ?)',
+    );
+
+    const result = db.transaction(() => {
+      const newNodeIds: number[] = [];
+      chain.forEach((c, i) => {
+        const f = (i + 1) / (chain.length + 1); // fracción sobre la recta A→B
+        const x = ax + (bx - ax) * f;
+        const y = ay + (by - ay) * f;
+        const name = c.name?.trim() || defaultNameForType(c.type);
+        const r = insertNode.run(c.type, name, Math.round(x), Math.round(y));
+        newNodeIds.push(Number(r.lastInsertRowid));
+      });
+
+      db.prepare('DELETE FROM edges WHERE id = ?').run(edgeId);
+
+      const seq = [edge.source_id, ...newNodeIds, edge.target_id];
+      const newEdgeIds: number[] = [];
+      for (let i = 0; i < seq.length - 1; i++) {
+        const isFirst = i === 0;
+        const r = insertEdge.run(
+          seq[i], seq[i + 1],
+          isFirst ? edge.label : '',
+          isFirst ? edge.capacity_mbps : null,
+          isFirst ? edge.source_interface : '',
+        );
+        newEdgeIds.push(Number(r.lastInsertRowid));
+      }
+      return { newNodeIds, newEdgeIds };
+    })();
+
+    const nodes = (db.prepare(`SELECT * FROM nodes WHERE id IN (${result.newNodeIds.map(() => '?').join(',')})`).all(...result.newNodeIds) as NodeRow[]).map(nodeToJson);
+    const edges = db.prepare(`SELECT * FROM edges WHERE id IN (${result.newEdgeIds.map(() => '?').join(',')})`).all(...result.newEdgeIds);
+    return { nodes, edges };
   });
 
   // ---------- Probar conexión ----------

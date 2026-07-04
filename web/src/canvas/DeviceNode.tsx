@@ -19,8 +19,22 @@ const SUMMARY_LABELS: Record<string, { label: string; unit: string }> = {
 
 export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
   const { node, live } = data;
-  const status = live?.status ?? 'unknown';
+  const isMonitor = node.type === 'monitor';
+  const status = isMonitor ? 'up' : live?.status ?? 'unknown';
   const chips: string[] = [];
+  if (isMonitor) {
+    return (
+      <div className={`device-node monitor-node status-up ${selected ? 'selected' : ''}`}>
+        <div className="dn-header">
+          <span className="dn-icon">{NODE_TYPE_ICONS.monitor}</span>
+          <span className="dn-title">{node.name}</span>
+          <span className="dn-dot up" />
+        </div>
+        <div className="dn-ip">Raíz de la red · sondas del PC</div>
+        <Handle type="source" position={Position.Right} />
+      </div>
+    );
+  }
   if (live?.latencyMs != null) chips.push(`${live.latencyMs.toFixed(0)} ms`);
   if (live?.lossPct != null && live.lossPct > 0) chips.push(`pérd ${live.lossPct}%`);
   for (const [key, { label, unit }] of Object.entries(SUMMARY_LABELS)) {

@@ -1,4 +1,4 @@
-import type { ApiNode, ApiEdge, LiveNode, Alert, LossMatrixCell, HourlyRow } from './types';
+import type { ApiNode, ApiEdge, LiveNode, Alert, LossMatrixCell, HourlyRow, NodeType } from './types';
 
 async function http<T>(url: string, options?: RequestInit): Promise<T> {
   // Solo declaramos JSON cuando hay cuerpo: si se envía Content-Type: application/json
@@ -32,6 +32,12 @@ export const api = {
     http<ApiEdge>(`/api/edges/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
 
   deleteEdge: (id: number) => http<{ ok: boolean }>(`/api/edges/${id}`, { method: 'DELETE' }),
+
+  splitEdge: (id: number, nodes: { type: NodeType; name?: string }[]) =>
+    http<{ nodes: ApiNode[]; edges: ApiEdge[] }>(`/api/edges/${id}/split`, {
+      method: 'POST',
+      body: JSON.stringify({ nodes }),
+    }),
 
   metrics: (params: { nodeId?: number; edgeId?: number; metric: string; hoursBack?: number }) => {
     const q = new URLSearchParams();

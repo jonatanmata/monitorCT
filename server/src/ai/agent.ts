@@ -73,6 +73,8 @@ ${links || '(sin enlaces configurados aún)'}
 
 Si un nodo falla, todo lo que cuelga aguas abajo de él falla también. Razona siempre sobre este grafo: busca el nodo/enlace más cercano al origen cuyos descendientes comparten el síntoma.
 
+El nodo de tipo "monitor" (💻 PC de monitoreo) es la raíz del grafo: es el propio PC desde donde corre este sistema y desde donde salen las sondas del origen "pc" hacia internet. La red se construye conectándolo al primer equipo y de ahí hacia afuera.
+
 ## Síntoma conocido de esta red (contexto crítico)
 - La red local funciona bien en pings entre equipos.
 - Los clientes y el PC de monitoreo pierden paquetes hacia 8.8.8.8 y hacia el gateway público del proveedor, PERO los MikroTik nunca pierden hacia esos mismos destinos con su ping normal.

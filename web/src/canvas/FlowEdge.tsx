@@ -4,6 +4,8 @@ export type FlowEdgeData = {
   label?: string;
   /** Estado de salud del enlace, derivado del nodo destino: up | warning | down | unknown */
   health?: 'up' | 'warning' | 'down' | 'unknown';
+  /** Abre el menú para insertar un equipo en este enlace ("romper el hilo"). */
+  onInsert?: (edgeId: string, x: number, y: number) => void;
 };
 
 const COLOR: Record<string, string> = {
@@ -45,16 +47,29 @@ export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePositio
           <animateMotion dur={health === 'warning' ? '2.6s' : '1.8s'} repeatCount="indefinite" path={path} />
         </circle>
       )}
-      {d.label && (
-        <EdgeLabelRenderer>
+      <EdgeLabelRenderer>
+        {d.label && (
           <div
             className="edge-label"
-            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+            style={{ transform: `translate(-50%, calc(-50% - 14px)) translate(${labelX}px, ${labelY}px)` }}
           >
             {d.label}
           </div>
-        </EdgeLabelRenderer>
-      )}
+        )}
+        {d.onInsert && (
+          <button
+            className="edge-insert-btn"
+            title="Insertar un equipo aquí (romper el hilo)"
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+            onClick={(e) => {
+              e.stopPropagation();
+              d.onInsert!(id, e.clientX, e.clientY);
+            }}
+          >
+            +
+          </button>
+        )}
+      </EdgeLabelRenderer>
     </>
   );
 }

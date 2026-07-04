@@ -8,7 +8,7 @@ import '@xyflow/react/dist/style.css';
 import { DeviceNode, type DeviceFlowNode } from './DeviceNode';
 import { FlowEdge as FlowEdgeComponent } from './FlowEdge';
 import type { ApiNode, ApiEdge, LiveNode, NodeType } from '../types';
-import { NODE_TYPE_LABELS, NODE_TYPE_ICONS } from '../types';
+import { NODE_TYPE_LABELS, NODE_TYPE_ICONS, ADDABLE_TYPES, nodesForInsert } from '../types';
 import { api } from '../api';
 import { InfoTip } from '../components/InfoTip';
 
@@ -35,6 +35,12 @@ export function TopologyCanvas({
   onSelectNode, onSelectEdge, onTopologyChanged,
 }: Props) {
   const [connecting, setConnecting] = useState(false);
+  // Popover para insertar un equipo dentro de un enlace ("romper el hilo")
+  const [insertMenu, setInsertMenu] = useState<{ edgeId: number; x: number; y: number } | null>(null);
+
+  const openInsertMenu = useCallback((edgeId: string, x: number, y: number) => {
+    setInsertMenu({ edgeId: parseInt(edgeId, 10), x, y });
+  }, []);
 
   const flowNodes: DeviceFlowNode[] = useMemo(
     () =>
@@ -43,6 +49,7 @@ export function TopologyCanvas({
         type: 'device' as const,
         position: { x: n.posX, y: n.posY },
         selected: n.id === selectedNodeId,
+        deletable: n.type !== 'monitor', // el monitor no se borra con Suprimir
         data: { node: n, live: live[n.id] ?? null },
       })),
     [nodes, live, selectedNodeId],
@@ -62,10 +69,24 @@ export function TopologyCanvas({
           data: {
             label: e.label || (e.capacity_mbps ? `${e.capacity_mbps} Mbps` : undefined),
             health,
+            onInsert: openInsertMenu,
           },
         };
       }),
-    [edges, live, selectedEdgeId],
+    [edges, live, selectedEdgeId, openInsertMenu],
+  );
+
+  const doInsert = useCallback(
+    (type: NodeType) => {
+      if (!insertMenu) return;
+      const edgeId = insertMenu.edgeId;
+      setInsertMenu(null);
+      void api.splitEdge(edgeId, nodesForInsert(type)).then((res) => {
+        onTopologyChanged();
+        if (res.nodes[0]) onSelectNode(res.nodes[0].id); // abre el primer nodo insertado
+      });
+    },
+    [insertMenu, onTopologyChanged, onSelectNode],
   );
 
   const onNodesChange = useCallback(
@@ -97,14 +118,19 @@ export function TopologyCanvas({
   // Eliminar desde el lienzo (tecla Suprimir/Backspace) — persiste el borrado
   const onNodesDelete = useCallback(
     (deleted: RFNode[]) => {
-      Promise.all(deleted.map((n) => api.deleteNode(parseInt(n.id, 10))))
+      // Nunca borrar el monitor (raíz)
+      const ids = deleted
+        .map((n) => parseInt(n.id, 10))
+        .filter((id) => nodes.find((x) => x.id === id)?.type !== 'monitor');
+      if (ids.length === 0) return onTopologyChanged();
+      Promise.all(ids.map((id) => api.deleteNode(id)))
         .then(() => {
           onSelectNode(null);
           onTopologyChanged();
         })
         .catch(() => onTopologyChanged());
     },
-    [onSelectNode, onTopologyChanged],
+    [nodes, onSelectNode, onTopologyChanged],
   );
 
   const onEdgesDelete = useCallback(
@@ -143,7 +169,7 @@ export function TopologyCanvas({
           Añadir equipo
           <InfoTip text="Este es el mapa de tu red. Añade cada equipo con estos botones y conéctalos ARRASTRANDO desde el punto azul del borde derecho de un nodo hasta el borde izquierdo del siguiente, siguiendo el camino de la señal (Gateway → MikroTik → PTP → MikroTik → AP → Cliente). Los puntos de conexión aparecen al pasar el mouse sobre un equipo. El color de cada línea muestra la salud del enlace y el punto que viaja indica el sentido del tráfico." />
         </div>
-        {(Object.keys(NODE_TYPE_LABELS) as NodeType[]).map((t) => (
+        {ADDABLE_TYPES.map((t) => (
           <button key={t} onClick={() => addNode(t)}>
             <span className="palette-icon">{NODE_TYPE_ICONS[t]}</span> {NODE_TYPE_LABELS[t]}
           </button>
@@ -194,6 +220,28 @@ export function TopologyCanvas({
           }}
         />
       </ReactFlow>
+
+      {insertMenu && (
+        <>
+          <div className="insert-menu-overlay" onClick={() => setInsertMenu(null)} />
+          <div
+            className="insert-menu"
+            style={{
+              left: Math.min(insertMenu.x, window.innerWidth - 220),
+              top: Math.min(insertMenu.y, window.innerHeight - 240),
+            }}
+          >
+            <div className="insert-menu-title">Insertar aquí:</div>
+            {ADDABLE_TYPES.map((t) => (
+              <button key={t} onClick={() => doInsert(t)}>
+                <span className="palette-icon">{NODE_TYPE_ICONS[t]}</span>
+                {NODE_TYPE_LABELS[t]}
+                {t === 'ptp-mimosa' && <span className="insert-hint">2 antenas</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
