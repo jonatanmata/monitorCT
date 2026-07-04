@@ -25,6 +25,13 @@ export const api = {
   testNode: (id: number) =>
     http<Record<string, { ok: boolean; detail: string }>>(`/api/nodes/${id}/test`, { method: 'POST' }),
 
+  cableTest: (id: number, iface?: string) =>
+    http<{
+      supported: boolean;
+      note?: string;
+      results?: { name: string; supported: boolean; status?: string; note?: string; pairs?: { pair: string; status: string; distanceM: number | null }[] }[];
+    }>(`/api/nodes/${id}/cable-test`, { method: 'POST', body: JSON.stringify(iface ? { interface: iface } : {}) }),
+
   createEdge: (body: { sourceId: number; targetId: number; label?: string; capacityMbps?: number; sourceInterface?: string }) =>
     http<ApiEdge>('/api/edges', { method: 'POST', body: JSON.stringify(body) }),
 

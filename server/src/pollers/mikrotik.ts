@@ -25,6 +25,34 @@ export interface MikrotikPingResult {
   avgMs: number | null;
 }
 
+export interface EthernetStatus {
+  name: string;
+  linkOk: boolean;
+  rateMbps: number | null;   // velocidad negociada
+  fullDuplex: boolean | null;
+  autoNegotiation: boolean | null;
+}
+
+export interface EthernetErrorStats {
+  name: string;
+  crcErrors: number;   // rx-fcs-error + rx-align-error + rx-fragment (firma de cable/EMI)
+  collisions: number;  // tx-collision + tx-late-collision (dúplex/cable)
+}
+
+export interface CablePair {
+  pair: string;
+  status: string;      // ok | open | short | open-short
+  distanceM: number | null;
+}
+
+export interface CableTestResult {
+  name: string;
+  supported: boolean;
+  status?: string;     // link-ok / no-link
+  pairs?: CablePair[];
+  note?: string;
+}
+
 async function withConnection<T>(
   ip: string,
   creds: Credentials,
@@ -119,6 +147,123 @@ export async function pingFromMikrotik(
       avgMs: avgRtt,
     };
   });
+}
+
+/** Convierte una tasa RouterOS ("1Gbps", "100Mbps", "10Mbps") a Mbps. */
+export function parseRateMbps(s: string | undefined): number | null {
+  if (!s) return null;
+  const m = /([\d.]+)\s*(G|M|k)?bps/i.exec(s);
+  if (!m) return null;
+  const v = parseFloat(m[1]);
+  const unit = (m[2] || 'M').toUpperCase();
+  if (unit === 'G') return v * 1000;
+  if (unit === 'K') return v / 1000;
+  return v;
+}
+
+/** Lista los nombres de interfaces ethernet del router. */
+async function listEthernet(conn: RouterOSAPI): Promise<string[]> {
+  const rows = (await conn.write('/interface/ethernet/print')) as Record<string, string>[];
+  return rows.map((r) => r['name']).filter(Boolean);
+}
+
+/**
+ * Estado de enlace por puerto ethernet (velocidad negociada + dúplex). NO invasivo.
+ * Un puerto Gigabit negociado a 100 Mbps o en half-duplex sugiere cable dañado.
+ */
+export async function getEthernetStatus(ip: string, creds: Credentials): Promise<EthernetStatus[]> {
+  return withConnection(ip, creds, async (conn) => {
+    const names = await listEthernet(conn);
+    const out: EthernetStatus[] = [];
+    for (const name of names) {
+      try {
+        const rows = (await conn.write('/interface/ethernet/monitor', [`=numbers=${name}`, '=once=']) ) as Record<string, string>[];
+        const r = rows[0] ?? {};
+        out.push({
+          name,
+          linkOk: (r['status'] || '') === 'link-ok',
+          rateMbps: parseRateMbps(r['rate']),
+          fullDuplex: r['full-duplex'] === undefined ? null : r['full-duplex'] === 'true',
+          autoNegotiation: r['auto-negotiation'] === undefined ? null : r['auto-negotiation'] === 'done' || r['auto-negotiation'] === 'true',
+        });
+      } catch {
+        // puerto sin soporte de monitor; se omite
+      }
+    }
+    return out;
+  });
+}
+
+/** Contadores de error de capa 1 por puerto (CRC/FCS/align/colisiones). NO invasivo. */
+export async function getEthernetErrorStats(ip: string, creds: Credentials): Promise<EthernetErrorStats[]> {
+  return withConnection(ip, creds, async (conn) => {
+    const rows = (await conn.write('/interface/ethernet/print', ['=stats='])) as Record<string, string>[];
+    return rows.map((r) => {
+      const n = (k: string) => parseInt(r[k], 10) || 0;
+      return {
+        name: r['name'],
+        crcErrors: n('rx-fcs-error') + n('rx-align-error') + n('rx-fragment'),
+        collisions: n('tx-collision') + n('tx-late-collision'),
+      };
+    });
+  });
+}
+
+/**
+ * Prueba de cable TDR: par por par ok/abierto/corto + distancia a la falla.
+ * INTERRUMPE el enlace ~1 s — solo bajo demanda, nunca en el loop de sondeo.
+ */
+export async function runCableTest(ip: string, creds: Credentials, iface: string): Promise<CableTestResult> {
+  return withConnection(ip, creds, async (conn) => {
+    try {
+      const rows = (await conn.write('/interface/ethernet/cable-test', [`=numbers=${iface}`, '=duration=1'])) as Record<string, string>[];
+      const r = rows[rows.length - 1] ?? {};
+      const pairs: CablePair[] = [];
+      // Formato A: campos cable-pair-N = "ok" | "open:12" | "short:5"
+      for (let i = 0; i < 8; i++) {
+        const raw = r[`cable-pair${i}`] ?? r[`cable-pair-${i}`];
+        if (raw === undefined) continue;
+        const [status, dist] = raw.split(':');
+        pairs.push({ pair: String(i), status, distanceM: dist ? parseFloat(dist) : null });
+      }
+      // Formato B: un solo campo cable-pairs = "ok,ok,open:12,ok" o "1:ok 2:open:12 ..."
+      if (pairs.length === 0 && r['cable-pairs']) {
+        const tokens = r['cable-pairs'].trim().split(/[\s,]+/).filter(Boolean);
+        tokens.forEach((tok, idx) => {
+          const parts = tok.split(':');
+          // "1:open:12" -> pair 1, status open, dist 12 ; "ok" -> pair idx, status ok
+          if (parts.length >= 2 && /^\d+$/.test(parts[0])) {
+            pairs.push({ pair: parts[0], status: parts[1], distanceM: parts[2] ? parseFloat(parts[2]) : null });
+          } else {
+            pairs.push({ pair: String(idx + 1), status: parts[0], distanceM: parts[1] ? parseFloat(parts[1]) : null });
+          }
+        });
+      }
+      return { name: iface, supported: true, status: r['status'], pairs };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // El chip/puerto (ej. SFP) puede no soportar cable-test
+      if (/not supported|no such|failure|unknown/i.test(msg)) {
+        return { name: iface, supported: false, note: 'Este puerto no soporta la prueba de cable (TDR)' };
+      }
+      throw err;
+    }
+  });
+}
+
+/** Corre cable-test en todas las interfaces ethernet (o en una específica). */
+export async function runCableTestAll(ip: string, creds: Credentials, iface?: string): Promise<CableTestResult[]> {
+  if (iface) return [await runCableTest(ip, creds, iface)];
+  const names = await withConnection(ip, creds, (conn) => listEthernet(conn));
+  const out: CableTestResult[] = [];
+  for (const name of names) {
+    try {
+      out.push(await runCableTest(ip, creds, name));
+    } catch (err) {
+      out.push({ name, supported: false, note: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return out;
 }
 
 /** Convierte tiempos RouterOS ("12ms", "1ms500us", "1s20ms") a milisegundos. */

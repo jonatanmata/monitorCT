@@ -1,4 +1,6 @@
-export type NodeType = 'monitor' | 'gateway-isp' | 'mikrotik' | 'ptp-mimosa' | 'ap-ubiquiti' | 'cliente';
+export type NodeType =
+  | 'monitor' | 'gateway-isp' | 'router' | 'mikrotik' | 'switch'
+  | 'ptp-mimosa' | 'ap-ubiquiti' | 'litebeam' | 'cliente';
 
 export interface ApiNode {
   id: number;
@@ -64,23 +66,31 @@ export interface HourlyRow {
 export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   'monitor': 'Monitor (PC)',
   'gateway-isp': 'Gateway / ISP',
+  'router': 'Router',
   'mikrotik': 'MikroTik',
+  'switch': 'Switch',
   'ptp-mimosa': 'PTP Mimosa',
   'ap-ubiquiti': 'AP Ubiquiti',
+  'litebeam': 'LiteBeam / Estación',
   'cliente': 'Cliente (LiteBeam)',
 };
 
 export const NODE_TYPE_ICONS: Record<NodeType, string> = {
   'monitor': '💻',
   'gateway-isp': '🌐',
+  'router': '🧭',
   'mikrotik': '🖥️',
+  'switch': '🔀',
   'ptp-mimosa': '📡',
   'ap-ubiquiti': '📶',
+  'litebeam': '🛰️',
   'cliente': '🏠',
 };
 
 /** Tipos que el usuario puede añadir/insertar (el monitor es singleton y automático). */
-export const ADDABLE_TYPES: NodeType[] = ['gateway-isp', 'mikrotik', 'ptp-mimosa', 'ap-ubiquiti', 'cliente'];
+export const ADDABLE_TYPES: NodeType[] = [
+  'gateway-isp', 'router', 'mikrotik', 'switch', 'ptp-mimosa', 'ap-ubiquiti', 'litebeam', 'cliente',
+];
 
 /** Nodos a insertar al partir un enlace: PTP inserta la pareja (2 antenas); el resto, uno. */
 export function nodesForInsert(type: NodeType): { type: NodeType; name?: string }[] {

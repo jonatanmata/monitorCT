@@ -14,6 +14,7 @@ const THRESHOLD_FIELDS: { key: string; label: string; help: string }[] = [
   { key: 'lossPct', label: 'Pérdida máx (%)', help: 'Pérdida de paquetes promedio hacia un equipo en 5 minutos por encima de este valor dispara alerta.' },
   { key: 'utilizationPct', label: 'Utilización máx (%)', help: 'Utilización sostenida de un enlace por encima de este valor se considera zona de saturación (requiere capacidad configurada en el enlace).' },
   { key: 'saturationLossPct', label: 'Pérdida p/ saturación (%)', help: 'Pérdida hacia internet que, combinada con utilización alta, dispara la alerta crítica de saturación — la firma del problema de horas pico.' },
+  { key: 'crcErrorsPer5min', label: 'Errores CRC / 5 min', help: 'Cantidad de errores CRC/FCS por puerto en 5 minutos que dispara alerta de cable. Errores CRC crecientes indican cable dañado, conector RJ45 mal ponchado o interferencia (EMI). También se alerta si un puerto Gigabit baja a 100 Mbps o queda en half-duplex.' },
 ];
 
 export function SettingsPanel({ onAiChanged }: Props) {

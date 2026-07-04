@@ -42,6 +42,14 @@ export const MIMOSA_PHY_RX = '1.3.6.1.4.1.43356.2.1.2.5.2.0'; // mimosaCurrentRx
 export const IF_NAME = '1.3.6.1.2.1.31.1.1.1.1';       // ifName
 export const IF_HC_IN_OCTETS = '1.3.6.1.2.1.31.1.1.1.6';  // ifHCInOctets
 export const IF_HC_OUT_OCTETS = '1.3.6.1.2.1.31.1.1.1.10'; // ifHCOutOctets
+export const IF_HIGH_SPEED = '1.3.6.1.2.1.31.1.1.1.15';   // ifHighSpeed (Mbps negociados)
+export const IF_IN_ERRORS = '1.3.6.1.2.1.2.2.1.14';       // ifInErrors
+export const IF_OUT_ERRORS = '1.3.6.1.2.1.2.2.1.20';      // ifOutErrors
+
+// ---------- EtherLike-MIB (diagnóstico físico de cable/dúplex) ----------
+export const DOT3_ALIGN_ERRORS = '1.3.6.1.2.1.10.7.2.1.2';  // dot3StatsAlignmentErrors
+export const DOT3_FCS_ERRORS = '1.3.6.1.2.1.10.7.2.1.3';    // dot3StatsFCSErrors
+export const DOT3_DUPLEX = '1.3.6.1.2.1.10.7.2.1.19';       // dot3StatsDuplexStatus (2=half,3=full)
 
 // SNMPv2-MIB básicos para "probar conexión"
 export const SYS_DESCR = '1.3.6.1.2.1.1.1.0';

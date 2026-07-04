@@ -59,6 +59,19 @@ const lastCounters = new Map<string, { rx: number; tx: number; ts: number }>();
 /** Drops previos por interfaz para reportar el incremento por intervalo. */
 const lastDrops = new Map<string, { txDrops: number; rxErrors: number }>();
 const lastQueueDrops = new Map<string, number>();
+// Contadores acumulados de capa física (CRC/colisiones) para reportar el incremento por intervalo
+const lastPhy = new Map<string, { crc: number; coll: number }>();
+
+/** Delta de un contador acumulado; null la primera vez o si se reinició. */
+function counterDelta(map: Map<string, { crc: number; coll: number }>, key: string, crc: number, coll: number): { dCrc: number; dColl: number } | null {
+  const prev = map.get(key);
+  map.set(key, { crc, coll });
+  if (!prev) return null;
+  const dCrc = crc - prev.crc;
+  const dColl = coll - prev.coll;
+  if (dCrc < 0 || dColl < 0) return null;
+  return { dCrc, dColl };
+}
 
 function trafficDelta(key: string, rx: number, tx: number): { rxMbps: number; txMbps: number } | null {
   const now = Date.now() / 1000;
@@ -125,6 +138,28 @@ export async function pollMikrotikMetrics(node: NodeRow): Promise<void> {
       writeMetric({ nodeId: node.id, metric: 'queue_drops', value: q.dropped - prev, extra: { queue: q.name } });
     }
   }
+
+  // Salud de enlace por puerto ethernet (velocidad negociada, dúplex, CRC) — no invasivo
+  try {
+    const [status, errStats] = await Promise.all([
+      mikrotik.getEthernetStatus(node.ip, creds),
+      mikrotik.getEthernetErrorStats(node.ip, creds),
+    ]);
+    for (const s of status) {
+      if (!s.linkOk) continue;
+      if (s.rateMbps !== null) writeMetric({ nodeId: node.id, metric: 'link_speed_mbps', value: s.rateMbps, extra: { iface: s.name } });
+      if (s.fullDuplex !== null) writeMetric({ nodeId: node.id, metric: 'duplex', value: s.fullDuplex ? 1 : 0, extra: { iface: s.name } });
+    }
+    for (const e of errStats) {
+      const d = counterDelta(lastPhy, `${node.id}:${e.name}`, e.crcErrors, e.collisions);
+      if (d) {
+        if (d.dCrc > 0) writeMetric({ nodeId: node.id, metric: 'crc_errors', value: d.dCrc, extra: { iface: e.name } });
+        if (d.dColl > 0) writeMetric({ nodeId: node.id, metric: 'collisions', value: d.dColl, extra: { iface: e.name } });
+      }
+    }
+  } catch {
+    // el equipo no expone /interface/ethernet (poco común); se omite
+  }
 }
 
 export async function pollSnmpMetrics(node: NodeRow): Promise<void> {
@@ -132,14 +167,32 @@ export async function pollSnmpMetrics(node: NodeRow): Promise<void> {
   const community = creds.snmpCommunity || 'public';
   const live = getLiveNode(node.id);
 
-  const metrics =
-    node.type === 'ptp-mimosa'
-      ? await snmpPoll.pollMimosa(node.ip, community)
-      : await snmpPoll.pollUbiquiti(node.ip, community);
+  // Métricas de radio solo para equipos airMAX/Mimosa (el router genérico no tiene radio)
+  if (node.type === 'ptp-mimosa') {
+    const metrics = await snmpPoll.pollMimosa(node.ip, community);
+    for (const [metric, value] of Object.entries(metrics)) {
+      writeMetric({ nodeId: node.id, metric, value });
+      live.summary[metric] = Math.round(value * 10) / 10;
+    }
+  } else if (node.type === 'ap-ubiquiti' || node.type === 'litebeam' || node.type === 'cliente') {
+    const metrics = await snmpPoll.pollUbiquiti(node.ip, community);
+    for (const [metric, value] of Object.entries(metrics)) {
+      writeMetric({ nodeId: node.id, metric, value });
+      live.summary[metric] = Math.round(value * 10) / 10;
+    }
+  }
 
-  for (const [metric, value] of Object.entries(metrics)) {
-    writeMetric({ nodeId: node.id, metric, value });
-    live.summary[metric] = Math.round(value * 10) / 10;
+  // Salud de enlace SNMP (velocidad negociada, dúplex, CRC/FCS) — todos los tipos SNMP
+  try {
+    const links = await snmpPoll.pollLinkHealth(node.ip, community);
+    for (const l of links) {
+      if (l.speedMbps !== null && l.speedMbps > 0) writeMetric({ nodeId: node.id, metric: 'link_speed_mbps', value: l.speedMbps, extra: { iface: l.name } });
+      if (l.duplex !== null) writeMetric({ nodeId: node.id, metric: 'duplex', value: l.duplex, extra: { iface: l.name } });
+      const d = counterDelta(lastPhy, `snmp:${node.id}:${l.name}`, l.fcsErrors, 0);
+      if (d && d.dCrc > 0) writeMetric({ nodeId: node.id, metric: 'crc_errors', value: d.dCrc, extra: { iface: l.name } });
+    }
+  } catch {
+    // EtherLike/IF-MIB no disponible en este equipo
   }
 
   // Tráfico IF-MIB con deltas (útil para AP y PTP)

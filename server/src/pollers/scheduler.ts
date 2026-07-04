@@ -30,9 +30,14 @@ async function metricsCycle(): Promise<void> {
     if (getLiveNode(node.id).status === 'down') continue;
     try {
       if (node.type === 'mikrotik') await pollMikrotikMetrics(node);
-      else if (node.type === 'ptp-mimosa' || node.type === 'ap-ubiquiti' || node.type === 'cliente') {
+      else if (
+        node.type === 'ptp-mimosa' || node.type === 'ap-ubiquiti' ||
+        node.type === 'litebeam' || node.type === 'cliente' || node.type === 'router'
+      ) {
+        // router genérico: solo salud de enlace SNMP (sin radio); el resto también leen radio
         await pollSnmpMetrics(node);
       }
+      // switch (pasivo), gateway-isp, monitor → solo ping
     } catch {
       // el equipo respondió al ping pero no a la consulta; se reintenta en el próximo ciclo
     }

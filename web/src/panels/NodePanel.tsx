@@ -33,7 +33,14 @@ const METRIC_LABELS: Record<string, string> = {
   tx_rate_mbps: 'Tasa TX (Mbps)',
   rx_rate_mbps: 'Tasa RX (Mbps)',
   rssi: 'RSSI',
+  link_speed_mbps: 'Velocidad de enlace (Mbps)',
+  duplex: 'Dúplex (1=full, 0=half)',
+  crc_errors: 'Errores CRC/FCS',
+  collisions: 'Colisiones',
 };
+
+interface CablePairResult { pair: string; status: string; distanceM: number | null }
+interface CableIfaceResult { name: string; supported: boolean; status?: string; note?: string; pairs?: CablePairResult[] }
 
 export function NodePanel({ node, onChanged, onDeleted }: Props) {
   const [form, setForm] = useState({
@@ -51,6 +58,8 @@ export function NodePanel({ node, onChanged, onDeleted }: Props) {
   const [available, setAvailable] = useState<string[]>([]);
   const [metric, setMetric] = useState('latency_ms');
   const [hoursBack, setHoursBack] = useState(6);
+  const [cableResult, setCableResult] = useState<{ supported: boolean; note?: string; results?: CableIfaceResult[] } | null>(null);
+  const [cableTesting, setCableTesting] = useState(false);
 
   useEffect(() => {
     setForm({
@@ -64,6 +73,7 @@ export function NodePanel({ node, onChanged, onDeleted }: Props) {
       probeSrcAddresses: node.probeSrcAddresses.join(', '),
     });
     setTestResult(null);
+    setCableResult(null);
     api.availableMetrics({ nodeId: node.id }).then((r) => {
       setAvailable(r.metrics);
       if (r.metrics.length && !r.metrics.includes('latency_ms')) setMetric(r.metrics[0]);
@@ -102,8 +112,21 @@ export function NodePanel({ node, onChanged, onDeleted }: Props) {
     }
   };
 
+  const runCableTest = async () => {
+    setCableTesting(true);
+    setCableResult(null);
+    try {
+      setCableResult(await api.cableTest(node.id));
+    } catch (err) {
+      setCableResult({ supported: false, note: String(err) });
+    } finally {
+      setCableTesting(false);
+    }
+  };
+
   const isMikrotik = form.type === 'mikrotik';
-  const isSnmp = form.type === 'ptp-mimosa' || form.type === 'ap-ubiquiti' || form.type === 'cliente';
+  const isSnmp = form.type === 'ptp-mimosa' || form.type === 'ap-ubiquiti' || form.type === 'litebeam' || form.type === 'cliente' || form.type === 'router';
+  const isSwitch = form.type === 'switch';
 
   // El nodo Monitor (PC) es la raíz: sin IP/credenciales/borrado; solo nombre.
   if (node.type === 'monitor') {
@@ -212,6 +235,63 @@ export function NodePanel({ node, onChanged, onDeleted }: Props) {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Diagnóstico físico de cable */}
+      {isSwitch && (
+        <>
+          <h3>🔌 Diagnóstico físico (cable)<InfoTip text="Un switch no administrable no reporta datos, así que su cable no se prueba directamente. Para descartar el cable que llega a este switch, corre la prueba de cable en el puerto del MikroTik (o equipo administrable) al que está conectado." /></h3>
+          <p className="small">
+            Switch no administrable: su cable se diagnostica desde el <b>puerto del MikroTik vecino</b>.
+            Selecciona ese MikroTik y usa allí «Probar cable».
+          </p>
+        </>
+      )}
+      {isMikrotik && (
+        <>
+          <h3>
+            🔌 Diagnóstico físico (cable UTP)
+            <InfoTip text="Prueba TDR de RouterOS: mide cada par del cable y dice si está OK, abierto o en corto, y a qué distancia en metros está la falla. Es la forma definitiva de confirmar o descartar un problema físico de cable. OJO: interrumpe el enlace de cada puerto ~1 segundo mientras mide, así que evita correrla sobre un enlace en producción en hora pico." />
+          </h3>
+          <p className="small" style={{ marginTop: 0 }}>
+            Además de esta prueba, el sistema vigila de forma continua la velocidad negociada, el dúplex y los
+            errores CRC de cada puerto (elige esas métricas abajo en «Historial»).
+          </p>
+          <div className="btn-row" style={{ marginTop: 6 }}>
+            <button className="ghost" onClick={() => void runCableTest()} disabled={cableTesting}>
+              {cableTesting ? 'Midiendo cable…' : 'Probar cable (todos los puertos)'}
+            </button>
+          </div>
+          {cableResult && (
+            <div style={{ marginTop: 8 }}>
+              {!cableResult.supported && <div className="key-status fail">{cableResult.note}</div>}
+              {cableResult.results?.map((r) => (
+                <div key={r.name} className="cable-iface">
+                  <div className="cable-iface-name">
+                    {r.name}
+                    {r.status && <span className="small"> · {r.status}</span>}
+                  </div>
+                  {!r.supported && <div className="small">{r.note || 'Puerto sin soporte de prueba de cable'}</div>}
+                  {r.pairs && r.pairs.length > 0 && (
+                    <div className="cable-pairs">
+                      {r.pairs.map((p, i) => {
+                        const ok = p.status === 'ok';
+                        return (
+                          <span key={i} className={`cable-pair ${ok ? 'ok' : 'bad'}`}>
+                            Par {p.pair}: {p.status}{p.distanceM != null && !ok ? ` @ ${p.distanceM} m` : ''}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {r.pairs && r.pairs.length > 0 && r.pairs.every((p) => p.status === 'ok') && (
+                    <div className="key-status ok">✔ Cable OK — los pares están correctos</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       <h3>

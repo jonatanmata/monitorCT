@@ -313,6 +313,14 @@ h3:first-child { margin-top: 0; }
 .insert-menu button:hover { background: var(--surface-hover); }
 .insert-hint { margin-left: auto; font-size: 10px; color: var(--warn); background: rgba(245,158,11,0.12); padding: 1px 6px; border-radius: 6px; }
 
+/* Resultado de prueba de cable */
+.cable-iface { background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 8px; }
+.cable-iface-name { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.cable-pairs { display: flex; flex-wrap: wrap; gap: 5px; }
+.cable-pair { font-size: 11px; padding: 2px 8px; border-radius: 6px; font-variant-numeric: tabular-nums; }
+.cable-pair.ok { background: rgba(16,185,129,0.12); color: #6ee7b7; }
+.cable-pair.bad { background: rgba(244,63,94,0.14); color: #fda4af; font-weight: 600; }
+
 /* Nodo Monitor (raíz) */
 .device-node.monitor-node {
   background: linear-gradient(160deg, #1b2740, #141c2e);

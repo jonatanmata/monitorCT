@@ -3,7 +3,7 @@ import { db, getSetting, setSetting, NODE_TYPES, type NodeRow, type EdgeRow, typ
 import { encryptJson, decryptJson } from '../db/crypto.js';
 import { allLiveNodes, dropLiveNode } from '../state.js';
 import { pingHost } from '../pollers/ping.js';
-import { testConnection as testMikrotik } from '../pollers/mikrotik.js';
+import { testConnection as testMikrotik, runCableTestAll } from '../pollers/mikrotik.js';
 import { testSnmp } from '../pollers/snmp.js';
 import { lossMatrix, hourlyCorrelation } from '../pollers/probes.js';
 import { getThresholds } from '../alerts/engine.js';
@@ -25,9 +25,12 @@ interface NodeBody {
 const TYPE_DEFAULT_NAME: Record<NodeType, string> = {
   'monitor': 'PC de monitoreo',
   'gateway-isp': 'Gateway / ISP',
+  'router': 'Router',
   'mikrotik': 'MikroTik',
+  'switch': 'Switch',
   'ptp-mimosa': 'PTP Mimosa',
   'ap-ubiquiti': 'AP Ubiquiti',
+  'litebeam': 'LiteBeam',
   'cliente': 'Cliente',
 };
 function defaultNameForType(type: NodeType): string {
@@ -245,6 +248,25 @@ export function registerApiRoutes(app: FastifyInstance): void {
       out.snmp = await testSnmp(node.ip, creds.snmpCommunity || 'public');
     }
     return out;
+  });
+
+  // ---------- Prueba de cable (TDR) ----------
+  app.post('/api/nodes/:id/cable-test', async (req, reply) => {
+    const id = parseInt((req.params as { id: string }).id, 10);
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(id) as NodeRow | undefined;
+    if (!node) return reply.code(404).send({ error: 'Nodo no encontrado' });
+    if (node.type !== 'mikrotik') {
+      return { supported: false, note: 'La prueba de cable TDR requiere un equipo MikroTik. Para un equipo detrás de un switch pasivo, prueba el puerto del MikroTik vecino.' };
+    }
+    if (!node.ip) return { supported: false, note: 'El equipo no tiene IP configurada' };
+    const b = (req.body ?? {}) as { interface?: string };
+    const creds = decryptJson<Credentials>(node.credentials_enc, {});
+    try {
+      const results = await runCableTestAll(node.ip, creds, b.interface);
+      return { supported: true, results };
+    } catch (err) {
+      return { supported: false, note: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   // ---------- Métricas ----------

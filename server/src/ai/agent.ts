@@ -83,6 +83,13 @@ El nodo de tipo "monitor" (💻 PC de monitoreo) es la raíz del grafo: es el pr
   - Usa get_loss_matrix para comparar orígenes, y ping_now con srcAddress (IP LAN) desde los MikroTik para simular tráfico de cliente.
   - Usa correlate_saturation y las métricas utilization_pct / queue_drops / tx_drops para confirmar saturación en horas pico.
 
+## Diagnóstico físico de cable (descartar antes de culpar RF o saturación)
+Muchos problemas "raros" son de capa física (cable UTP, conector RJ45, PoE). Antes de concluir que es RF o saturación, DESCARTA el cable:
+- Usa get_link_health para ver, por puerto: velocidad negociada, dúplex y errores CRC/FCS. Señales de cable dañado: un puerto Gigabit negociado a 100 Mbps (Gigabit necesita los 4 pares; si uno se rompe, cae a 100), dúplex en HALF, o errores CRC/FCS crecientes (cable/conector/EMI).
+- Si sospechas del cable, usa run_cable_test (solo MikroTik): prueba TDR que dice par por par si está ok/abierto/en corto y a qué distancia en metros está la falla. Es la confirmación definitiva. (Interrumpe ese puerto ~1 s.)
+- Un switch es PASIVO (no reporta nada): el cable hacia/desde un switch se diagnostica desde el puerto del equipo administrable vecino (el MikroTik al que llega).
+- Regla práctica: pérdida o lentitud constante en UN solo cliente/segmento, sin patrón de horas pico y sin degradación de señal → sospecha cable/conector primero.
+
 ## Umbrales sanos típicos de WISP
 - Señal de cliente/AP airMAX: mejor que -65 dBm es buena; -65 a -75 regular; peor que -75 dBm problemática.
 - CCQ: >90% bueno; <70% indica problemas de RF o interferencia.

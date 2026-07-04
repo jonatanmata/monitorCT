@@ -16,8 +16,13 @@ db.pragma('foreign_keys = ON');
 const schema = readFileSync(path.resolve(here, '../../src/db/schema.sql'), 'utf8');
 db.exec(schema);
 
-export type NodeType = 'monitor' | 'gateway-isp' | 'mikrotik' | 'ptp-mimosa' | 'ap-ubiquiti' | 'cliente';
-export const NODE_TYPES: NodeType[] = ['monitor', 'gateway-isp', 'mikrotik', 'ptp-mimosa', 'ap-ubiquiti', 'cliente'];
+export type NodeType =
+  | 'monitor' | 'gateway-isp' | 'router' | 'mikrotik' | 'switch'
+  | 'ptp-mimosa' | 'ap-ubiquiti' | 'litebeam' | 'cliente';
+export const NODE_TYPES: NodeType[] = [
+  'monitor', 'gateway-isp', 'router', 'mikrotik', 'switch',
+  'ptp-mimosa', 'ap-ubiquiti', 'litebeam', 'cliente',
+];
 
 /**
  * Migración idempotente: las bases creadas antes de añadir el tipo 'monitor'

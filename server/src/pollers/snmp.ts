@@ -5,6 +5,8 @@ import {
   MIMOSA_CHAIN_TABLE, MIMOSA_CHAIN_COLS,
   MIMOSA_PHY_TX, MIMOSA_PHY_RX,
   IF_NAME, IF_HC_IN_OCTETS, IF_HC_OUT_OCTETS,
+  IF_HIGH_SPEED, IF_IN_ERRORS,
+  DOT3_FCS_ERRORS, DOT3_ALIGN_ERRORS, DOT3_DUPLEX,
   SYS_DESCR, SYS_NAME,
 } from '../snmp/oids.js';
 
@@ -152,6 +154,48 @@ export async function pollIfCounters(ip: string, community: string): Promise<Snm
         name,
         inOctets: num(inOct.get(`${IF_HC_IN_OCTETS}.${idx}`)) ?? 0,
         outOctets: num(outOct.get(`${IF_HC_OUT_OCTETS}.${idx}`)) ?? 0,
+      });
+    }
+    return out;
+  } finally {
+    session.close();
+  }
+}
+
+export interface SnmpLinkHealth {
+  name: string;
+  speedMbps: number | null;
+  duplex: number | null;   // 1=full, 0=half, null=desconocido
+  fcsErrors: number;       // acumulado (CRC/align)
+  inErrors: number;        // acumulado
+}
+
+/**
+ * Salud de enlace por interfaz vía IF-MIB + EtherLike-MIB: velocidad negociada,
+ * dúplex y errores CRC/FCS. Best-effort: si un OID no está, se omite.
+ */
+export async function pollLinkHealth(ip: string, community: string): Promise<SnmpLinkHealth[]> {
+  const session = createSession(ip, community);
+  try {
+    const [names, speed, inErr, fcs, align, duplex] = await Promise.all([
+      subtree(session, IF_NAME),
+      subtree(session, IF_HIGH_SPEED).catch(() => new Map<string, VarBind>()),
+      subtree(session, IF_IN_ERRORS).catch(() => new Map<string, VarBind>()),
+      subtree(session, DOT3_FCS_ERRORS).catch(() => new Map<string, VarBind>()),
+      subtree(session, DOT3_ALIGN_ERRORS).catch(() => new Map<string, VarBind>()),
+      subtree(session, DOT3_DUPLEX).catch(() => new Map<string, VarBind>()),
+    ]);
+    const out: SnmpLinkHealth[] = [];
+    for (const [oid, vb] of names) {
+      const idx = oid.slice(IF_NAME.length + 1);
+      const name = Buffer.isBuffer(vb.value) ? vb.value.toString('utf8') : String(vb.value);
+      const dpx = num(duplex.get(`${DOT3_DUPLEX}.${idx}`));
+      out.push({
+        name,
+        speedMbps: num(speed.get(`${IF_HIGH_SPEED}.${idx}`)),
+        duplex: dpx === null ? null : dpx === 3 ? 1 : dpx === 2 ? 0 : null,
+        fcsErrors: (num(fcs.get(`${DOT3_FCS_ERRORS}.${idx}`)) ?? 0) + (num(align.get(`${DOT3_ALIGN_ERRORS}.${idx}`)) ?? 0),
+        inErrors: num(inErr.get(`${IF_IN_ERRORS}.${idx}`)) ?? 0,
       });
     }
     return out;
