@@ -13,6 +13,17 @@ import { startScheduler } from './pollers/scheduler.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
+// Red de seguridad: algunas librerías (p. ej. node-routeros al recibir una respuesta
+// inesperada de un MikroTik) lanzan errores de forma asíncrona que un try/catch normal
+// no atrapa. Sin esto, un solo equipo con una respuesta rara tumbaría TODO el monitoreo.
+// Aquí los registramos y dejamos que el sistema siga corriendo.
+process.on('uncaughtException', (err) => {
+  console.error('[resiliencia] excepción no controlada (se continúa):', err instanceof Error ? err.message : err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[resiliencia] promesa rechazada no controlada (se continúa):', reason instanceof Error ? reason.message : reason);
+});
+
 async function main(): Promise<void> {
   const app = Fastify({ logger: { level: 'info' } });
 

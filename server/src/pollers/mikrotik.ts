@@ -65,11 +65,15 @@ async function withConnection<T>(
     port: 8728,
     timeout: 8,
   });
+  // Evita que un evento 'error' sin listener (o una respuesta inesperada del router)
+  // se convierta en una excepción no controlada que tumbe el proceso.
+  const emitter = conn as unknown as { on?: (ev: string, cb: (e: unknown) => void) => void };
+  emitter.on?.('error', () => { /* contenido; la operación fallará y se reintenta al próximo ciclo */ });
   await conn.connect();
   try {
     return await fn(conn);
   } finally {
-    conn.close();
+    try { conn.close(); } catch { /* ya cerrada */ }
   }
 }
 
