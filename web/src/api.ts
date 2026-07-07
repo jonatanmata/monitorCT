@@ -41,6 +41,13 @@ export const api = {
       queues: { name: string; usedMbps: number; limitMbps: number | null; down: boolean }[];
     }>(`/api/nodes/${id}/routeros-flow`, { method: 'POST' }),
 
+  interfaces: (id: number) =>
+    http<{
+      supported: boolean;
+      note?: string;
+      interfaces?: { name: string; type: string; running: boolean; rxMbps: number; txMbps: number }[];
+    }>(`/api/nodes/${id}/interfaces`, { method: 'POST' }),
+
   audit: (id: number) =>
     http<{
       supported: boolean;

@@ -548,6 +548,45 @@ async function getEthStatusInline(conn: RouterOSAPI): Promise<EthernetStatus[]> 
   return out;
 }
 
+export interface IfaceInfo {
+  name: string;
+  type: string;
+  running: boolean;
+  rxMbps: number;
+  txMbps: number;
+}
+
+/**
+ * Lista las interfaces del MikroTik con su tráfico actual (rx/tx en Mbps), para
+ * que el usuario elija la interfaz origen de un enlace desde un selector en vez
+ * de escribir el nombre a mano. El tráfico se lee con monitor-traffic (=once=).
+ */
+export async function getInterfaces(ip: string, creds: Credentials): Promise<IfaceInfo[]> {
+  return withConnection(ip, creds, async (conn) => {
+    const rows = (await conn.write('/interface/print')) as Record<string, string>[];
+    const list: IfaceInfo[] = rows
+      .filter((r) => r['name'])
+      .map((r) => ({ name: r['name'], type: r['type'] || '', running: r['running'] === 'true', rxMbps: 0, txMbps: 0 }));
+
+    // Tasa instantánea por interfaz (una sola llamada con la lista separada por comas).
+    const names = list.map((l) => l.name);
+    if (names.length) {
+      try {
+        const rt = (await conn.write('/interface/monitor-traffic', [`=interface=${names.join(',')}`, '=once='])) as Record<string, string>[];
+        const byName = new Map(rt.map((r) => [r['name'], r]));
+        for (const l of list) {
+          const r = byName.get(l.name);
+          if (r) {
+            l.rxMbps = Math.round((parseInt(r['rx-bits-per-second'], 10) || 0) / 1e5) / 10;
+            l.txMbps = Math.round((parseInt(r['tx-bits-per-second'], 10) || 0) / 1e5) / 10;
+          }
+        }
+      } catch { /* la tasa es best-effort; al menos devolvemos los nombres */ }
+    }
+    return list;
+  });
+}
+
 /** Prueba de conexión rápida para el botón del panel. */
 export async function testConnection(ip: string, creds: Credentials): Promise<{ ok: boolean; detail: string }> {
   try {

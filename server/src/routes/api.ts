@@ -3,7 +3,7 @@ import { db, getSetting, setSetting, NODE_TYPES, focusStart, setFocusStart, clea
 import { encryptJson, decryptJson } from '../db/crypto.js';
 import { allLiveNodes, dropLiveNode } from '../state.js';
 import { pingHost } from '../pollers/ping.js';
-import { testConnection as testMikrotik, runCableTestAll, getRouterosFlow, auditMikrotik } from '../pollers/mikrotik.js';
+import { testConnection as testMikrotik, runCableTestAll, getRouterosFlow, auditMikrotik, getInterfaces } from '../pollers/mikrotik.js';
 import { testSnmp } from '../pollers/snmp.js';
 import { lossMatrix, hourlyCorrelation } from '../pollers/probes.js';
 import { getThresholds } from '../alerts/engine.js';
@@ -306,6 +306,22 @@ export function registerApiRoutes(app: FastifyInstance): void {
     try {
       const result = await auditMikrotik(node.ip, creds);
       return { supported: true, ...result };
+    } catch (err) {
+      return { supported: false, note: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // Interfaces de un MikroTik con su tráfico (para elegir la interfaz origen de un enlace).
+  app.post('/api/nodes/:id/interfaces', async (req, reply) => {
+    const id = parseInt((req.params as { id: string }).id, 10);
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(id) as NodeRow | undefined;
+    if (!node) return reply.code(404).send({ error: 'Nodo no encontrado' });
+    if (node.type !== 'mikrotik') return { supported: false, note: 'La lista de puertos requiere un MikroTik (API RouterOS).' };
+    if (!node.ip) return { supported: false, note: 'El equipo no tiene IP configurada.' };
+    const creds = decryptJson<Credentials>(node.credentials_enc, {});
+    if (!creds.routerosUser) return { supported: false, note: 'Configura el usuario/clave API RouterOS del equipo.' };
+    try {
+      return { supported: true, interfaces: await getInterfaces(node.ip, creds) };
     } catch (err) {
       return { supported: false, note: err instanceof Error ? err.message : String(err) };
     }
