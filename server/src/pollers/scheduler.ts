@@ -2,13 +2,27 @@ import { db, pruneOldData, rollupMetrics, type NodeRow } from '../db/index.js';
 import { pollNodePing, pollMikrotikMetrics, pollSnmpMetrics, broadcastStatus } from './collector.js';
 import { runPcProbes, runMikrotikProbes } from './probes.js';
 import { evaluateAlerts } from '../alerts/engine.js';
+import { remindOpenCritical } from '../alerts/notifier.js';
 import { diagnoseAlert, aiAvailable } from '../ai/agent.js';
 import { getLiveNode } from '../state.js';
 
 const PING_INTERVAL_MS = 15_000;
 const METRICS_INTERVAL_MS = 60_000;
 const PROBE_INTERVAL_MS = 60_000;
+const REMINDER_INTERVAL_MS = 60_000; // chequeo de recordatorios; el gate real es reminderMinutes
 const HOUSEKEEPING_INTERVAL_MS = 3_600_000;
+
+/** Al arrancar: resuelve alertas huérfanas (de nodos ya borrados) para que no queden abiertas para siempre. */
+function purgeOrphanAlerts(): void {
+  try {
+    // La FK es ON DELETE SET NULL: al borrar un nodo/enlace, sus alertas quedan con
+    // node_id/edge_id en NULL y abiertas para siempre. Una alerta sin nodo NI enlace
+    // es basura → se elimina. También las que apunten a un id inexistente.
+    db.prepare('DELETE FROM alerts WHERE node_id IS NULL AND edge_id IS NULL').run();
+    db.prepare('DELETE FROM alerts WHERE node_id IS NOT NULL AND node_id NOT IN (SELECT id FROM nodes)').run();
+    db.prepare('DELETE FROM alerts WHERE edge_id IS NOT NULL AND edge_id NOT IN (SELECT id FROM edges)').run();
+  } catch (err) { console.error('purgeOrphanAlerts:', err); }
+}
 
 function enabledNodes(): NodeRow[] {
   return db.prepare(`SELECT * FROM nodes WHERE enabled = 1 AND ip != ''`).all() as NodeRow[];
@@ -69,6 +83,7 @@ let timers: NodeJS.Timeout[] = [];
 
 export function startScheduler(): void {
   stopScheduler();
+  purgeOrphanAlerts();
   const guard = (fn: () => Promise<void>) => {
     let running = false;
     return () => {
@@ -83,6 +98,7 @@ export function startScheduler(): void {
     setInterval(guard(pingCycle), PING_INTERVAL_MS),
     setInterval(guard(metricsCycle), METRICS_INTERVAL_MS),
     setInterval(guard(probeCycle), PROBE_INTERVAL_MS),
+    setInterval(() => { try { remindOpenCritical(); } catch (err) { console.error('reminder:', err); } }, REMINDER_INTERVAL_MS),
     setInterval(housekeeping, HOUSEKEEPING_INTERVAL_MS),
   ];
   // Primer ciclo inmediato

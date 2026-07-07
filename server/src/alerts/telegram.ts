@@ -23,12 +23,14 @@ export interface TelegramConfig {
   quietEnd: number | null;    // fin horario silencioso (hora 0-23)
   actionButtons: boolean;     // botones inline (Resolver / Silenciar) + poller de callbacks
   groupWindowSec: number;     // ventana de agrupación anti-spam (segundos)
+  reminderMinutes: number;    // re-recordar por TG las alertas críticas que sigan abiertas cada N min (0 = off)
 }
 
 const DEFAULT: TelegramConfig = {
   enabled: false, botToken: '', chatId: '',
   minSeverity: 'warning', notifyResolved: true, notifyDiagnosis: true,
   criticalChatId: '', quietStart: null, quietEnd: null, actionButtons: false, groupWindowSec: 25,
+  reminderMinutes: 30,
 };
 
 const SEVERITY_RANK: Record<Severity, number> = { info: 0, warning: 1, critical: 2 };
@@ -44,7 +46,7 @@ export function getTelegramConfigSafe() {
     enabled: c.enabled, hasToken: Boolean(c.botToken), chatId: c.chatId,
     minSeverity: c.minSeverity, notifyResolved: c.notifyResolved, notifyDiagnosis: c.notifyDiagnosis,
     criticalChatId: c.criticalChatId, quietStart: c.quietStart, quietEnd: c.quietEnd,
-    actionButtons: c.actionButtons, groupWindowSec: c.groupWindowSec,
+    actionButtons: c.actionButtons, groupWindowSec: c.groupWindowSec, reminderMinutes: c.reminderMinutes,
   };
 }
 
@@ -62,6 +64,7 @@ export function saveTelegramConfig(patch: Partial<TelegramConfig>): void {
     quietEnd: patch.quietEnd !== undefined ? patch.quietEnd : current.quietEnd,
     actionButtons: patch.actionButtons ?? current.actionButtons,
     groupWindowSec: patch.groupWindowSec ?? current.groupWindowSec,
+    reminderMinutes: patch.reminderMinutes ?? current.reminderMinutes,
   };
   setSetting('telegram_config_enc', encryptJson(merged));
 }

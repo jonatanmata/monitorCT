@@ -5,7 +5,7 @@ import { Icon } from '../ui/meta';
 type Sev = 'info' | 'warning' | 'critical';
 type TgCfg = {
   enabled: boolean; hasToken: boolean; chatId: string; minSeverity: Sev; notifyResolved: boolean; notifyDiagnosis: boolean;
-  criticalChatId: string; quietStart: number | null; quietEnd: number | null; actionButtons: boolean; groupWindowSec: number;
+  criticalChatId: string; quietStart: number | null; quietEnd: number | null; actionButtons: boolean; groupWindowSec: number; reminderMinutes: number;
 };
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
@@ -17,7 +17,7 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
 }
 
 export function TelegramSection() {
-  const [cfg, setCfg] = useState<TgCfg>({ enabled: false, hasToken: false, chatId: '', minSeverity: 'warning', notifyResolved: true, notifyDiagnosis: true, criticalChatId: '', quietStart: null, quietEnd: null, actionButtons: false, groupWindowSec: 25 });
+  const [cfg, setCfg] = useState<TgCfg>({ enabled: false, hasToken: false, chatId: '', minSeverity: 'warning', notifyResolved: true, notifyDiagnosis: true, criticalChatId: '', quietStart: null, quietEnd: null, actionButtons: false, groupWindowSec: 25, reminderMinutes: 30 });
   const [token, setToken] = useState('');
   const [chatId, setChatId] = useState('');
   const [detecting, setDetecting] = useState(false);
@@ -153,6 +153,19 @@ export function TelegramSection() {
                 <option value={25}>25 s</option>
                 <option value={45}>45 s</option>
                 <option value={60}>60 s</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Recordar caídas que siguen abiertas</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Re-avisa las alertas críticas que no se han resuelto (ej. un PTP caído), cada:</div>
+              </div>
+              <select className="inp sans" style={{ width: 'auto' }} value={cfg.reminderMinutes} onChange={(e) => savePref({ reminderMinutes: parseInt(e.target.value, 10) })}>
+                <option value={0}>No recordar</option>
+                <option value={15}>15 min</option>
+                <option value={30}>30 min</option>
+                <option value={60}>1 h</option>
+                <option value={120}>2 h</option>
               </select>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>

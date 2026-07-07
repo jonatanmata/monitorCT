@@ -18,6 +18,9 @@ type Item = RaisedItem | ResolvedItem;
 
 let queue: Item[] = [];
 let timer: NodeJS.Timeout | null = null;
+// Última vez (epoch s) que se avisó por Telegram de cada alerta, para el recordatorio.
+const lastNotified = new Map<number, number>();
+const nowSec = () => Math.floor(Date.now() / 1000);
 
 export function notifyRaised(item: Omit<RaisedItem, 'kind'>): void { enqueue({ kind: 'raised', ...item }); }
 export function notifyResolved(item: Omit<ResolvedItem, 'kind'>): void { enqueue({ kind: 'resolved', ...item }); }
@@ -105,9 +108,11 @@ async function flush(): Promise<void> {
           text += `\n↳ arrastra ${cas.length} equipo(s) aguas abajo: ${names}${cas.length > 6 ? '…' : ''}`;
         }
         await sendTelegram(text, { chatId: routeChat(it.severity), buttons: buttonsFor(it.alertId, it.nodeId) });
+        lastNotified.set(it.alertId, nowSec());
       } else {
         if (!shouldSend(it.nodeId, it.severity)) continue;
         await sendTelegram(formatAlertMessage(it), { chatId: routeChat(it.severity), buttons: buttonsFor(it.alertId, it.nodeId) });
+        lastNotified.set(it.alertId, nowSec());
       }
     } else {
       if (!c.notifyResolved) continue;
@@ -120,6 +125,30 @@ async function flush(): Promise<void> {
       if (isQuietNow() && !isWatched(it.nodeId)) continue; // resuelto = informativo, se calla en silencioso
       await sendTelegram(formatResolvedMessage(it.message, it.minutesOpen), { chatId: c.chatId });
     }
+  }
+}
+
+/**
+ * Recordatorio: re-avisa por Telegram las alertas CRÍTICAS que siguen abiertas
+ * cada `reminderMinutes`. Así una caída persistente (ej. un PTP a una montaña que
+ * quedó caído) sigue recordándote en vez de avisar una sola vez. Lo llama el scheduler.
+ */
+export function remindOpenCritical(): void {
+  const c = getTelegramConfig();
+  if (!c.enabled || !c.botToken || !c.chatId || !c.reminderMinutes) return;
+  const now = nowSec();
+  const cutoff = now - c.reminderMinutes * 60;
+  const rows = db
+    .prepare("SELECT id, message, node_id, created_at FROM alerts WHERE resolved_at IS NULL AND severity = 'critical'")
+    .all() as { id: number; message: string; node_id: number | null; created_at: number }[];
+  for (const r of rows) {
+    if (isMuted(r.node_id)) continue;
+    // Si nunca lo mandamos en esta ejecución, usa la fecha de creación como referencia.
+    const last = lastNotified.get(r.id) ?? r.created_at;
+    if (last > cutoff) continue;
+    const mins = Math.max(1, Math.round((now - r.created_at) / 60));
+    void sendTelegram(`⏰ *Sigue abierta* (${mins} min)\n${r.message}`, { chatId: routeChat('critical'), buttons: buttonsFor(r.id, r.node_id) });
+    lastNotified.set(r.id, now);
   }
 }
 

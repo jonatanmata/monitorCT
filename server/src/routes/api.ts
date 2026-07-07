@@ -129,6 +129,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
     if (node?.type === 'monitor') {
       return reply.code(400).send({ error: 'El nodo Monitor (PC) es la raíz de la red y no se puede eliminar' });
     }
+    db.prepare('DELETE FROM alerts WHERE node_id = ?').run(id); // evita alertas huérfanas abiertas
     db.prepare('DELETE FROM nodes WHERE id = ?').run(id);
     dropLiveNode(id);
     return { ok: true };
@@ -158,6 +159,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
 
   app.delete('/api/edges/:id', async (req) => {
     const id = parseInt((req.params as { id: string }).id, 10);
+    db.prepare('DELETE FROM alerts WHERE edge_id = ?').run(id); // evita alertas huérfanas abiertas
     db.prepare('DELETE FROM edges WHERE id = ?').run(id);
     return { ok: true };
   });
@@ -466,7 +468,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
       enabled?: boolean; botToken?: string; chatId?: string; clear?: boolean;
       minSeverity?: 'info' | 'warning' | 'critical'; notifyResolved?: boolean; notifyDiagnosis?: boolean;
       criticalChatId?: string; quietStart?: number | null; quietEnd?: number | null;
-      actionButtons?: boolean; groupWindowSec?: number;
+      actionButtons?: boolean; groupWindowSec?: number; reminderMinutes?: number;
     };
     if (b.clear) { clearTelegramConfig(); stopTelegramPoller(); }
     else {
@@ -474,7 +476,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
         enabled: b.enabled, botToken: b.botToken, chatId: b.chatId,
         minSeverity: b.minSeverity, notifyResolved: b.notifyResolved, notifyDiagnosis: b.notifyDiagnosis,
         criticalChatId: b.criticalChatId, quietStart: b.quietStart, quietEnd: b.quietEnd,
-        actionButtons: b.actionButtons, groupWindowSec: b.groupWindowSec,
+        actionButtons: b.actionButtons, groupWindowSec: b.groupWindowSec, reminderMinutes: b.reminderMinutes,
       });
       syncTelegramPoller();
     }

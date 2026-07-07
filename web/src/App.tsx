@@ -44,6 +44,27 @@ export default function App() {
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   useEffect(() => { alarmRef.current = alarmCfg; saveAlarmCfg(alarmCfg); }, [alarmCfg]);
 
+  // Al cargar: si ya hay equipos de infraestructura caídos (alertas node_down abiertas),
+  // dispara la alarma — así no se pierde una caída que ocurrió antes de abrir el monitor.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || nodes.length === 0) return;
+    seededRef.current = true;
+    const cfg = alarmRef.current;
+    if (!cfg.enabled) return;
+    api.alerts().then((r) => {
+      const items: EmergencyItem[] = [];
+      for (const a of r.alerts) {
+        if (a.resolved_at || a.type !== 'node_down' || a.node_id == null) continue;
+        const node = nodes.find((n) => n.id === a.node_id);
+        if (node && (INFRA_TYPES.has(node.type) || node.watched || cfg.allDevices)) {
+          items.push({ nodeId: node.id, name: node.name, message: a.message });
+        }
+      }
+      if (items.length) setEmergencies(items);
+    }).catch(() => {});
+  }, [nodes]);
+
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme); localStorage.setItem('mct-theme', theme); }, [theme]);
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
 

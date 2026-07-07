@@ -111,7 +111,7 @@ export const api = {
         enabled: boolean; hasToken: boolean; chatId: string;
         minSeverity: 'info' | 'warning' | 'critical'; notifyResolved: boolean; notifyDiagnosis: boolean;
         criticalChatId: string; quietStart: number | null; quietEnd: number | null;
-        actionButtons: boolean; groupWindowSec: number;
+        actionButtons: boolean; groupWindowSec: number; reminderMinutes: number;
       };
       aiModels: { diagnosis: string; economic: string };
       aiModelOptions: string[];
@@ -137,7 +137,7 @@ export const api = {
     enabled?: boolean; botToken?: string; chatId?: string; clear?: boolean;
     minSeverity?: 'info' | 'warning' | 'critical'; notifyResolved?: boolean; notifyDiagnosis?: boolean;
     criticalChatId?: string; quietStart?: number | null; quietEnd?: number | null;
-    actionButtons?: boolean; groupWindowSec?: number;
+    actionButtons?: boolean; groupWindowSec?: number; reminderMinutes?: number;
   }) =>
     http<{ ok: boolean; telegram: { enabled: boolean; hasToken: boolean; chatId: string } }>(
       '/api/settings/telegram',
