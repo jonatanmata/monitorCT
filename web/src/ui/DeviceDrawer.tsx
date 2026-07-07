@@ -264,17 +264,19 @@ export function EdgeDrawer({ edge, nodes, onChanged, onDeleted, onClose }: {
 }) {
   const source = nodes.find((n) => n.id === edge.source_id);
   const target = nodes.find((n) => n.id === edge.target_id);
-  const sourceIsMikrotik = source?.type === 'mikrotik';
+  // El MikroTik puede estar en cualquier extremo del enlace: sus puertos y la utilización
+  // se leen desde ahí sin importar la dirección en que se dibujó el enlace.
+  const mkNode = source?.type === 'mikrotik' ? source : target?.type === 'mikrotik' ? target : undefined;
   const [form, setForm] = useState({ label: edge.label, capacityMbps: edge.capacity_mbps?.toString() ?? '', sourceInterface: edge.source_interface });
   const [ifaces, setIfaces] = useState<{ name: string; type: string; running: boolean; rxMbps: number; txMbps: number }[] | null>(null);
   const [ifaceBusy, setIfaceBusy] = useState(false);
   const [ifaceNote, setIfaceNote] = useState<string | null>(null);
 
   const loadIfaces = async () => {
-    if (!source) return;
+    if (!mkNode) return;
     setIfaceBusy(true); setIfaceNote(null);
     try {
-      const r = await api.interfaces(source.id);
+      const r = await api.interfaces(mkNode.id);
       if (r.supported && r.interfaces) { setIfaces(r.interfaces); if (!r.interfaces.length) setIfaceNote('El router no devolvió interfaces.'); }
       else { setIfaces(null); setIfaceNote(r.note ?? 'No se pudieron leer los puertos.'); }
     } catch (err) { setIfaces(null); setIfaceNote(String(err)); }
@@ -284,7 +286,7 @@ export function EdgeDrawer({ edge, nodes, onChanged, onDeleted, onClose }: {
   useEffect(() => {
     setForm({ label: edge.label, capacityMbps: edge.capacity_mbps?.toString() ?? '', sourceInterface: edge.source_interface });
     setIfaces(null); setIfaceNote(null);
-    if (source?.type === 'mikrotik') void loadIfaces();
+    if (mkNode) void loadIfaces();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [edge.id]);
 
@@ -304,8 +306,8 @@ export function EdgeDrawer({ edge, nodes, onChanged, onDeleted, onClose }: {
           <input className="inp" value={form.capacityMbps} placeholder="ej. 700 (real del enlace)" onChange={(e) => setForm({ ...form, capacityMbps: e.target.value })} /></label>
         <label className="field">
           <span className="field-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span>Interfaz origen (en {source?.name ?? 'el equipo origen'})</span>
-            {sourceIsMikrotik && (
+            <span>Interfaz {mkNode ? `del MikroTik (${mkNode.name})` : 'origen'}</span>
+            {mkNode && (
               <button
                 onClick={() => void loadIfaces()} disabled={ifaceBusy}
                 style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, padding: 0 }}
@@ -315,7 +317,7 @@ export function EdgeDrawer({ edge, nodes, onChanged, onDeleted, onClose }: {
               </button>
             )}
           </span>
-          {sourceIsMikrotik && ifaces && ifaces.length > 0 ? (
+          {mkNode && ifaces && ifaces.length > 0 ? (
             <select className="inp sans" value={form.sourceInterface} onChange={(e) => setForm({ ...form, sourceInterface: e.target.value })}>
               <option value="">— elige el puerto —</option>
               {[...ifaces].sort((a, b) => Math.max(b.rxMbps, b.txMbps) - Math.max(a.rxMbps, a.txMbps)).map((i) => (
@@ -327,9 +329,9 @@ export function EdgeDrawer({ edge, nodes, onChanged, onDeleted, onClose }: {
           ) : (
             <input className="inp" value={form.sourceInterface} placeholder="ether1, sfp1, wlan1…" onChange={(e) => setForm({ ...form, sourceInterface: e.target.value })} />
           )}
-          {sourceIsMikrotik && ifaceNote && <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{ifaceNote} Puedes escribir el nombre a mano.</span>}
-          {sourceIsMikrotik && ifaces && ifaces.length > 0 && <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Ordenados por tráfico actual — el del PTP suele ser el más cargado.</span>}
-          {sourceIsMikrotik && ifaces && ifaces.length > 0 && form.sourceInterface && !ifaces.some((i) => i.name === form.sourceInterface) && (
+          {mkNode && ifaceNote && <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{ifaceNote} Puedes escribir el nombre a mano.</span>}
+          {mkNode && ifaces && ifaces.length > 0 && <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Ordenados por tráfico actual — el del PTP suele ser el más cargado.</span>}
+          {mkNode && ifaces && ifaces.length > 0 && form.sourceInterface && !ifaces.some((i) => i.name === form.sourceInterface) && (
             <input className="inp" style={{ marginTop: 6 }} value={form.sourceInterface} onChange={(e) => setForm({ ...form, sourceInterface: e.target.value })} placeholder="o escribe el nombre" />
           )}
         </label>

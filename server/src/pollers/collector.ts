@@ -88,6 +88,13 @@ function trafficDelta(key: string, rx: number, tx: number): { rxMbps: number; tx
 function edgesForNode(nodeId: number): EdgeRow[] {
   return db.prepare('SELECT * FROM edges WHERE source_id = ?').all(nodeId) as EdgeRow[];
 }
+/** Aristas donde el nodo es origen O destino (para medir utilización desde el MikroTik en cualquier sentido). */
+function edgesTouchingNode(nodeId: number): EdgeRow[] {
+  return db.prepare('SELECT * FROM edges WHERE source_id = ? OR target_id = ?').all(nodeId, nodeId) as EdgeRow[];
+}
+function nodeTypeOf(nodeId: number): string | undefined {
+  return (db.prepare('SELECT type FROM nodes WHERE id = ?').get(nodeId) as { type: string } | undefined)?.type;
+}
 
 export async function pollMikrotikMetrics(node: NodeRow): Promise<void> {
   const creds = nodeCredentials(node);
@@ -100,7 +107,7 @@ export async function pollMikrotikMetrics(node: NodeRow): Promise<void> {
   live.summary.mem_pct = info.memPct;
 
   const ifaces = await mikrotik.getInterfaceStats(node.ip, creds);
-  const edges = edgesForNode(node.id);
+  const edges = edgesTouchingNode(node.id);
   for (const iface of ifaces) {
     const key = `${node.id}:${iface.name}`;
     const delta = trafficDelta(key, iface.rxBytes, iface.txBytes);
@@ -108,8 +115,13 @@ export async function pollMikrotikMetrics(node: NodeRow): Promise<void> {
       writeMetric({ nodeId: node.id, metric: 'rx_mbps', value: delta.rxMbps, extra: { iface: iface.name } });
       writeMetric({ nodeId: node.id, metric: 'tx_mbps', value: delta.txMbps, extra: { iface: iface.name } });
 
-      // Utilización del enlace si alguna arista mapea esta interfaz
-      const edge = edges.find((e) => e.source_interface === iface.name);
+      // Utilización del enlace si alguna arista mapea esta interfaz. Se mide desde este MikroTik
+      // sea origen o destino del enlace (así funciona aunque lo dibujaras Mimosa→MikroTik). Si es
+      // el destino, solo se mide aquí cuando el origen NO es otro MikroTik (para no duplicar).
+      const edge = edges.find((e) =>
+        e.source_interface === iface.name && e.capacity_mbps != null &&
+        (e.source_id === node.id || nodeTypeOf(e.source_id) !== 'mikrotik'),
+      );
       if (edge?.capacity_mbps) {
         const util = (Math.max(delta.rxMbps, delta.txMbps) / edge.capacity_mbps) * 100;
         writeMetric({ edgeId: edge.id, metric: 'utilization_pct', value: Math.round(util * 10) / 10 });

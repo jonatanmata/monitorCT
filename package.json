@@ -1,6 +1,6 @@
 {
   "name": "monitorct",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
   "description": "Monitoreo de red WISP con diagnóstico por IA (MikroTik, Mimosa, Ubiquiti)",
   "workspaces": [
