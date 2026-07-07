@@ -12,8 +12,8 @@ import {
 
 function createSession(ip: string, community: string): Session {
   return snmp.createSession(ip, community || 'public', {
-    timeout: 3000,
-    retries: 1,
+    timeout: 5000,  // las antenas airMAX/Mimosa a veces responden lento
+    retries: 2,
     version: snmp.Version2c,
   });
 }
@@ -141,11 +141,9 @@ export async function pollMimosa(ip: string, community: string): Promise<Record<
 export async function pollIfCounters(ip: string, community: string): Promise<SnmpIfCounters[]> {
   const session = createSession(ip, community);
   try {
-    const [names, inOct, outOct] = await Promise.all([
-      subtree(session, IF_NAME),
-      subtree(session, IF_HC_IN_OCTETS),
-      subtree(session, IF_HC_OUT_OCTETS),
-    ]);
+    const names = await subtree(session, IF_NAME);
+    const inOct = await subtree(session, IF_HC_IN_OCTETS);
+    const outOct = await subtree(session, IF_HC_OUT_OCTETS);
     const out: SnmpIfCounters[] = [];
     for (const [oid, vb] of names) {
       const idx = oid.slice(IF_NAME.length + 1);
@@ -177,14 +175,15 @@ export interface SnmpLinkHealth {
 export async function pollLinkHealth(ip: string, community: string): Promise<SnmpLinkHealth[]> {
   const session = createSession(ip, community);
   try {
-    const [names, speed, inErr, fcs, align, duplex] = await Promise.all([
-      subtree(session, IF_NAME),
-      subtree(session, IF_HIGH_SPEED).catch(() => new Map<string, VarBind>()),
-      subtree(session, IF_IN_ERRORS).catch(() => new Map<string, VarBind>()),
-      subtree(session, DOT3_FCS_ERRORS).catch(() => new Map<string, VarBind>()),
-      subtree(session, DOT3_ALIGN_ERRORS).catch(() => new Map<string, VarBind>()),
-      subtree(session, DOT3_DUPLEX).catch(() => new Map<string, VarBind>()),
-    ]);
+    // Secuencial (no en paralelo): el agente SNMP de una antena de bajo consumo
+    // se satura con muchas consultas simultáneas y responde "request timeout".
+    const empty = () => new Map<string, VarBind>();
+    const names = await subtree(session, IF_NAME);
+    const speed = await subtree(session, IF_HIGH_SPEED).catch(empty);
+    const inErr = await subtree(session, IF_IN_ERRORS).catch(empty);
+    const fcs = await subtree(session, DOT3_FCS_ERRORS).catch(empty);
+    const align = await subtree(session, DOT3_ALIGN_ERRORS).catch(empty);
+    const duplex = await subtree(session, DOT3_DUPLEX).catch(empty);
     const out: SnmpLinkHealth[] = [];
     for (const [oid, vb] of names) {
       const idx = oid.slice(IF_NAME.length + 1);

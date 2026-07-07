@@ -4,8 +4,30 @@ import { encryptJson, decryptJson } from '../db/crypto.js';
 import { toolDefinitions, executeTool } from './tools.js';
 import { sendTelegram, formatDiagnosisMessage, telegramNotifyDiagnosis } from '../alerts/telegram.js';
 
-const MODEL = 'claude-opus-4-8';
 const MAX_ITERATIONS = 12;
+
+/** Modelos válidos para elegir en Ajustes. */
+export const AI_MODELS = ['claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5'] as const;
+const DEFAULT_DIAGNOSIS = 'claude-opus-4-8';
+const DEFAULT_ECONOMIC = 'claude-sonnet-5';
+
+/** Modelo potente para el diagnóstico interactivo (chat). */
+export function getDiagnosisModel(): string {
+  const m = getSetting('ai_model_diagnosis', DEFAULT_DIAGNOSIS);
+  return (AI_MODELS as readonly string[]).includes(m) ? m : DEFAULT_DIAGNOSIS;
+}
+/** Modelo económico para tareas automáticas frecuentes (diagnóstico de alertas). */
+export function getEconomicModel(): string {
+  const m = getSetting('ai_model_economic', DEFAULT_ECONOMIC);
+  return (AI_MODELS as readonly string[]).includes(m) ? m : DEFAULT_ECONOMIC;
+}
+export function getAiModels(): { diagnosis: string; economic: string } {
+  return { diagnosis: getDiagnosisModel(), economic: getEconomicModel() };
+}
+export function setAiModels(diagnosis?: string, economic?: string): void {
+  if (diagnosis && (AI_MODELS as readonly string[]).includes(diagnosis)) setSetting('ai_model_diagnosis', diagnosis);
+  if (economic && (AI_MODELS as readonly string[]).includes(economic)) setSetting('ai_model_economic', economic);
+}
 
 /**
  * La API key puede venir de dos lugares (en este orden):
@@ -34,7 +56,7 @@ export async function testApiKey(key?: string): Promise<{ ok: boolean; detail: s
   if (!apiKey) return { ok: false, detail: 'No hay API key configurada' };
   try {
     const test = new Anthropic({ apiKey });
-    await test.messages.countTokens({ model: MODEL, messages: [{ role: 'user', content: 'hola' }] });
+    await test.messages.countTokens({ model: getDiagnosisModel(), messages: [{ role: 'user', content: 'hola' }] });
     return { ok: true, detail: 'Clave válida — el diagnóstico con IA está activo' };
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError) return { ok: false, detail: 'Clave inválida o revocada' };
@@ -105,6 +127,13 @@ Muchos problemas "raros" son de capa física (cable UTP, conector RJ45, PoE). An
 3. Distingue causas: saturación (utilización alta + drops + patrón horario), RF/interferencia (señal/CCQ/SNR degradados, capacidad PHY baja), hardware/cable (errores rx, pérdida constante sin patrón horario, un solo segmento), CPU (cpu_pct alto correlacionado con tráfico).
 4. Responde con: el punto de falla más probable (nodo o enlace concreto), la evidencia que lo respalda, causas alternativas descartadas y pasos accionables (qué revisar/cambiar en campo o en configuración).
 
+## Estilo de respuesta (IMPORTANTE — ahorra tokens)
+- Razona todo lo que necesites en tu pensamiento interno (thinking), NO en la respuesta al usuario.
+- Tu respuesta debe ser CONCRETA y BREVE: el punto de falla probable (nodo/enlace por su nombre), la evidencia clave (1-3 datos), y los pasos accionables. Nada más.
+- Prohibido el relleno: no repitas la pregunta, no expliques lo que "vas a hacer", no listes todo lo que descartaste salvo que sea relevante, no añadas disclaimers ni resúmenes de cortesía.
+- Si te falta un dato, consúltalo con una herramienta antes de responder; no divagues.
+- Formato preferido: 2-5 frases o viñetas cortas. Si todo está bien, dilo en una frase.
+
 Responde siempre en español. Sé concreto: nombra los nodos y enlaces por su nombre.`;
 }
 
@@ -122,15 +151,17 @@ export interface AgentEvents {
 export async function runAgent(
   messages: Anthropic.MessageParam[],
   events: AgentEvents = {},
+  opts: { model?: string } = {},
 ): Promise<{ finalText: string; messages: Anthropic.MessageParam[] }> {
   const anthropic = getClient();
+  const model = opts.model ?? getDiagnosisModel();
   const system = buildSystemPrompt();
   const history: Anthropic.MessageParam[] = [...messages];
   let finalText = '';
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
     const stream = anthropic.messages.stream({
-      model: MODEL,
+      model,
       max_tokens: 16000,
       thinking: { type: 'adaptive', display: 'summarized' },
       system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
@@ -175,12 +206,17 @@ export async function diagnoseAlert(alertId: number): Promise<void> {
   if (!alert) return;
 
   try {
-    const { finalText } = await runAgent([
-      {
-        role: 'user',
-        content: `Se acaba de disparar esta alerta automática: [${alert.type}] ${alert.message}. Investiga con las herramientas y da un diagnóstico breve (máx ~200 palabras): causa más probable, evidencia y qué hacer.`,
-      },
-    ]);
+    // Diagnóstico automático de alertas: usa el modelo ECONÓMICO (corre seguido)
+    const { finalText } = await runAgent(
+      [
+        {
+          role: 'user',
+          content: `Se acaba de disparar esta alerta automática: [${alert.type}] ${alert.message}. Investiga con las herramientas y da un diagnóstico breve (máx ~120 palabras): causa más probable, evidencia y qué hacer. Ve al grano, sin relleno.`,
+        },
+      ],
+      {},
+      { model: getEconomicModel() },
+    );
     db.prepare('UPDATE alerts SET ai_diagnosis = ? WHERE id = ?').run(finalText, alertId);
     if (finalText && telegramNotifyDiagnosis()) void sendTelegram(formatDiagnosisMessage(alert.message, finalText));
   } catch (err) {

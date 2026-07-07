@@ -7,7 +7,7 @@ import { testConnection as testMikrotik, runCableTestAll } from '../pollers/mikr
 import { testSnmp } from '../pollers/snmp.js';
 import { lossMatrix, hourlyCorrelation } from '../pollers/probes.js';
 import { getThresholds } from '../alerts/engine.js';
-import { aiAvailable, resolveApiKey, saveApiKey, clearApiKey, testApiKey } from '../ai/agent.js';
+import { aiAvailable, resolveApiKey, saveApiKey, clearApiKey, testApiKey, getAiModels, setAiModels, AI_MODELS } from '../ai/agent.js';
 import { getTelegramConfigSafe, saveTelegramConfig, clearTelegramConfig, testTelegram, detectChatIds } from '../alerts/telegram.js';
 import { getUpdateStatus, applyUpdate, setAutoUpdate } from '../update.js';
 
@@ -343,6 +343,8 @@ export function registerApiRoutes(app: FastifyInstance): void {
     hasApiKey: aiAvailable(),
     apiKeySource: process.env.ANTHROPIC_API_KEY ? 'env' : resolveApiKey() ? 'ui' : null,
     telegram: getTelegramConfigSafe(),
+    aiModels: getAiModels(),
+    aiModelOptions: AI_MODELS,
   }));
 
   app.put('/api/settings', async (req) => {
@@ -351,11 +353,14 @@ export function registerApiRoutes(app: FastifyInstance): void {
       pcProbeTargets?: string[];
       anthropicApiKey?: string;      // guardarla cifrada en la BD local
       clearApiKey?: boolean;         // borrar la guardada desde la UI
+      aiModelDiagnosis?: string;
+      aiModelEconomic?: string;
     };
     if (b.thresholds) setSetting('thresholds', JSON.stringify(b.thresholds));
     if (b.pcProbeTargets) setSetting('pc_probe_targets', JSON.stringify(b.pcProbeTargets));
     if (b.clearApiKey) clearApiKey();
     else if (b.anthropicApiKey) saveApiKey(b.anthropicApiKey.trim());
+    if (b.aiModelDiagnosis || b.aiModelEconomic) setAiModels(b.aiModelDiagnosis, b.aiModelEconomic);
     return { ok: true, hasApiKey: aiAvailable() };
   });
 

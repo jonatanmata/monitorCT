@@ -22,6 +22,8 @@ export function SettingsPanel({ onAiChanged }: Props) {
   const [apiKeySource, setApiKeySource] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState('');
   const [keyStatus, setKeyStatus] = useState<KeyStatus>(null);
+  const [aiModels, setAiModels] = useState<{ diagnosis: string; economic: string }>({ diagnosis: '', economic: '' });
+  const [aiModelOptions, setAiModelOptions] = useState<string[]>([]);
   const [thresholds, setThresholds] = useState<Record<string, number>>({});
   const [targets, setTargets] = useState('');
   const [saved, setSaved] = useState(false);
@@ -47,7 +49,22 @@ export function SettingsPanel({ onAiChanged }: Props) {
       setTargets(s.pcProbeTargets.join(', '));
       setTg(s.telegram);
       setTgChatId(s.telegram.chatId);
+      setAiModels(s.aiModels);
+      setAiModelOptions(s.aiModelOptions);
     }).catch(() => {});
+
+  const MODEL_LABELS: Record<string, string> = {
+    'claude-opus-4-8': 'Opus 4.8 (máxima capacidad)',
+    'claude-sonnet-5': 'Sonnet 5 (equilibrado, ~½ precio)',
+    'claude-haiku-4-5': 'Haiku 4.5 (el más económico y rápido)',
+  };
+  const saveAiModel = async (patch: { aiModelDiagnosis?: string; aiModelEconomic?: string }) => {
+    setAiModels((m) => ({
+      diagnosis: patch.aiModelDiagnosis ?? m.diagnosis,
+      economic: patch.aiModelEconomic ?? m.economic,
+    }));
+    await api.saveSettings(patch);
+  };
 
   useEffect(() => { void load(); void checkUpdate(); }, []);
 
@@ -219,6 +236,25 @@ export function SettingsPanel({ onAiChanged }: Props) {
           </div>
         )}
         {keyStatus && <div className={`key-status ${keyStatus.kind}`}>{keyStatus.text}</div>}
+
+        {aiModelOptions.length > 0 && (
+          <div className="tg-prefs" style={{ marginTop: 12 }}>
+            <div className="small" style={{ marginBottom: 8, display: 'flex', alignItems: 'center' }}>
+              Modelos de IA (híbrido)
+              <InfoTip text="Para ahorrar: usa un modelo económico en las tareas automáticas (el diagnóstico de cada alerta, que corre seguido) y el modelo potente solo cuando TÚ pides un diagnóstico en el chat. Opus 4.8 es el más capaz; Sonnet 5 cuesta ~la mitad; Haiku 4.5 es el más barato." />
+            </div>
+            <div className="form-grid">
+              <label>Diagnóstico (chat)</label>
+              <select value={aiModels.diagnosis} onChange={(e) => void saveAiModel({ aiModelDiagnosis: e.target.value })}>
+                {aiModelOptions.map((m) => <option key={m} value={m}>{MODEL_LABELS[m] ?? m}</option>)}
+              </select>
+              <label>Económico (alertas)</label>
+              <select value={aiModels.economic} onChange={(e) => void saveAiModel({ aiModelEconomic: e.target.value })}>
+                {aiModelOptions.map((m) => <option key={m} value={m}>{MODEL_LABELS[m] ?? m}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="settings-section">

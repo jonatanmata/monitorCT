@@ -80,12 +80,16 @@ export const api = {
         enabled: boolean; hasToken: boolean; chatId: string;
         minSeverity: 'info' | 'warning' | 'critical'; notifyResolved: boolean; notifyDiagnosis: boolean;
       };
+      aiModels: { diagnosis: string; economic: string };
+      aiModelOptions: string[];
     }>('/api/settings'),
   saveSettings: (body: {
     thresholds?: Record<string, number>;
     pcProbeTargets?: string[];
     anthropicApiKey?: string;
     clearApiKey?: boolean;
+    aiModelDiagnosis?: string;
+    aiModelEconomic?: string;
   }) => http<{ ok: boolean; hasApiKey: boolean }>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
   testApiKey: (key?: string) =>
     http<{ ok: boolean; detail: string }>('/api/settings/test-api-key', {
