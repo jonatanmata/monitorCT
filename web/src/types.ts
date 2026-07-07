@@ -15,6 +15,9 @@ export interface ApiNode {
   hasRouterosCreds: boolean;
   snmpCommunity: string;
   watched: boolean;
+  /** Ubicación geográfica en el mapa (null = sin ubicar). */
+  lat: number | null;
+  lng: number | null;
 }
 
 export interface ApiEdge {

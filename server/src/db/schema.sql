@@ -15,7 +15,10 @@ CREATE TABLE IF NOT EXISTS nodes (
   -- Para mikrotik: IPs de origen alternativas para /ping (src-address), JSON array
   probe_src_addresses TEXT NOT NULL DEFAULT '[]',
   enabled INTEGER NOT NULL DEFAULT 1,
-  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  -- Ubicación geográfica para el modo mapa (null = sin ubicar)
+  lat REAL,
+  lng REAL
 );
 
 CREATE TABLE IF NOT EXISTS edges (

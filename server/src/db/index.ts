@@ -62,6 +62,20 @@ function migrateDropTypeCheck(): void {
 }
 migrateDropTypeCheck();
 
+/**
+ * Migración idempotente por columnas: añade una columna si no existe.
+ * (CREATE TABLE IF NOT EXISTS de schema.sql no altera tablas ya creadas.)
+ */
+function addColumnIfMissing(table: string, column: string, ddl: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
+}
+// Modo mapa: ubicación geográfica de cada nodo (null = sin ubicar en el mapa).
+addColumnIfMissing('nodes', 'lat', 'REAL');
+addColumnIfMissing('nodes', 'lng', 'REAL');
+
 /** Garantiza que exista el nodo Monitor (raíz singleton = este PC). No borrable. */
 export function ensureMonitorNode(): void {
   const exists = db.prepare(`SELECT 1 FROM nodes WHERE type = 'monitor' LIMIT 1`).get();
@@ -85,6 +99,8 @@ export interface NodeRow {
   probe_src_addresses: string;
   enabled: number;
   created_at: number;
+  lat: number | null;
+  lng: number | null;
 }
 
 export interface EdgeRow {

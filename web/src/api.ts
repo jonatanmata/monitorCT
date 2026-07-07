@@ -115,6 +115,8 @@ export const api = {
       };
       aiModels: { diagnosis: string; economic: string };
       aiModelOptions: string[];
+      maptilerKey: string;
+      mapStyle: string;
     }>('/api/settings'),
   saveSettings: (body: {
     thresholds?: Record<string, number>;
@@ -123,6 +125,8 @@ export const api = {
     clearApiKey?: boolean;
     aiModelDiagnosis?: string;
     aiModelEconomic?: string;
+    maptilerKey?: string;
+    mapStyle?: string;
   }) => http<{ ok: boolean; hasApiKey: boolean }>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
   testApiKey: (key?: string) =>
     http<{ ok: boolean; detail: string }>('/api/settings/test-api-key', {

@@ -22,6 +22,10 @@ interface NodeBody {
   probeTargets?: string[];
   probeSrcAddresses?: string[];
   enabled?: boolean;
+  // Ubicación en el mapa. Semántica explícita: si la clave viene en el body se usa
+  // (incluido null = des-ubicar); si no viene, se conserva la guardada.
+  lat?: number | null;
+  lng?: number | null;
 }
 
 const TYPE_DEFAULT_NAME: Record<NodeType, string> = {
@@ -55,6 +59,8 @@ function nodeToJson(n: NodeRow) {
     hasRouterosCreds: Boolean(creds.routerosUser),
     snmpCommunity: creds.snmpCommunity ?? '',
     watched: isWatched(n.id),
+    lat: n.lat,
+    lng: n.lng,
   };
 }
 
@@ -72,8 +78,8 @@ export function registerApiRoutes(app: FastifyInstance): void {
     if (b.type === 'monitor') return reply.code(400).send({ error: 'El nodo Monitor es único y se crea automáticamente' });
     const res = db
       .prepare(
-        `INSERT INTO nodes (type, name, ip, pos_x, pos_y, credentials_enc, probe_targets, probe_src_addresses, enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO nodes (type, name, ip, pos_x, pos_y, credentials_enc, probe_targets, probe_src_addresses, enabled, lat, lng)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         b.type, b.name, b.ip ?? '', b.posX ?? 0, b.posY ?? 0,
@@ -81,6 +87,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
         JSON.stringify(b.probeTargets ?? []),
         JSON.stringify(b.probeSrcAddresses ?? []),
         b.enabled === false ? 0 : 1,
+        b.lat ?? null, b.lng ?? null,
       );
     const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(res.lastInsertRowid) as NodeRow;
     return nodeToJson(node);
@@ -104,9 +111,14 @@ export function registerApiRoutes(app: FastifyInstance): void {
       credentialsEnc = encryptJson(merged);
     }
 
+    // lat/lng: semántica de clave presente (permite null explícito para des-ubicar)
+    const body = req.body as Record<string, unknown>;
+    const lat = 'lat' in body ? (b.lat ?? null) : existing.lat;
+    const lng = 'lng' in body ? (b.lng ?? null) : existing.lng;
+
     db.prepare(
       `UPDATE nodes SET type = ?, name = ?, ip = ?, pos_x = ?, pos_y = ?, credentials_enc = ?,
-       probe_targets = ?, probe_src_addresses = ?, enabled = ? WHERE id = ?`,
+       probe_targets = ?, probe_src_addresses = ?, enabled = ?, lat = ?, lng = ? WHERE id = ?`,
     ).run(
       b.type ?? existing.type,
       b.name ?? existing.name,
@@ -117,6 +129,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
       JSON.stringify(b.probeTargets ?? JSON.parse(existing.probe_targets)),
       JSON.stringify(b.probeSrcAddresses ?? JSON.parse(existing.probe_src_addresses)),
       b.enabled === undefined ? existing.enabled : b.enabled ? 1 : 0,
+      lat, lng,
       id,
     );
     const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(id) as NodeRow;
@@ -437,6 +450,9 @@ export function registerApiRoutes(app: FastifyInstance): void {
     telegram: getTelegramConfigSafe(),
     aiModels: getAiModels(),
     aiModelOptions: AI_MODELS,
+    // Modo mapa (MapTiler): key gratuita del usuario + estilo elegido
+    maptilerKey: getSetting('maptiler_key', ''),
+    mapStyle: getSetting('map_style', 'dark'),
   }));
 
   app.put('/api/settings', async (req) => {
@@ -447,12 +463,16 @@ export function registerApiRoutes(app: FastifyInstance): void {
       clearApiKey?: boolean;         // borrar la guardada desde la UI
       aiModelDiagnosis?: string;
       aiModelEconomic?: string;
+      maptilerKey?: string;
+      mapStyle?: string;
     };
     if (b.thresholds) setSetting('thresholds', JSON.stringify(b.thresholds));
     if (b.pcProbeTargets) setSetting('pc_probe_targets', JSON.stringify(b.pcProbeTargets));
     if (b.clearApiKey) clearApiKey();
     else if (b.anthropicApiKey) saveApiKey(b.anthropicApiKey.trim());
     if (b.aiModelDiagnosis || b.aiModelEconomic) setAiModels(b.aiModelDiagnosis, b.aiModelEconomic);
+    if (b.maptilerKey !== undefined) setSetting('maptiler_key', b.maptilerKey.trim());
+    if (b.mapStyle !== undefined && ['dark', 'satellite', 'streets'].includes(b.mapStyle)) setSetting('map_style', b.mapStyle);
     return { ok: true, hasApiKey: aiAvailable() };
   });
 

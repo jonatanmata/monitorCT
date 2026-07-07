@@ -72,13 +72,18 @@ export function Icon({
 }
 
 /** Sección de la app (navegación de la barra lateral). */
-export type Section = 'topology' | 'alerts' | 'saturation' | 'ai' | 'telegram' | 'settings';
+export type Section = 'topology' | 'map' | 'alerts' | 'saturation' | 'ai' | 'telegram' | 'settings';
 
 export const SECTION_META: Record<Section, { title: string; subtitle: string; icon: string }> = {
   topology: {
     title: 'Topología',
     subtitle: 'Mapa en vivo de la red — arrastra, conecta y rompe enlaces',
     icon: 'M5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM19 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM19 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 5h10M6.5 6.8L17.5 15.5M12 7v10',
+  },
+  map: {
+    title: 'Mapa',
+    subtitle: 'Ubica tus equipos geográficamente con estado en vivo',
+    icon: 'M9 3L3 6v15l6-3 6 3 6-3V3l-6 3-6-3zM9 3v15M15 6v15',
   },
   alerts: {
     title: 'Alertas',
@@ -116,6 +121,10 @@ export const HELP: Record<string, { title: string; body: string }> = {
   palette: {
     title: 'Paleta de equipos',
     body: 'Cada botón añade un tipo de equipo al lienzo: Gateway/ISP, Router, MikroTik, Switch, PTP Mimosa, AP Ubiquiti, LiteBeam/Estación y Cliente. Un PTP inserta sus dos antenas al «romper el hilo» de un enlace existente con el botón + de la línea.',
+  },
+  map: {
+    title: 'Mapa geográfico',
+    body: 'Ubica tus equipos en un mapa real por coordenadas. Son los MISMOS equipos de la topología, con su estado en vivo (colores, anillo pulsante) y los enlaces animados. Arrastra un marcador para colocarlo; usa el panel «Sin ubicar» para los que aún no tienen posición. Clic en un equipo o enlace abre su panel. Requiere una API key gratuita de MapTiler (se configura en Ajustes → Mapa).',
   },
   alerts: {
     title: 'Alertas',

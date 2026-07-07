@@ -40,9 +40,14 @@ export function SettingsSection({ onAiChanged, focusStart, onFocusChanged, alarm
   const [updBusy, setUpdBusy] = useState(false);
   const [updLog, setUpdLog] = useState<string | null>(null);
 
+  const [maptilerKey, setMaptilerKey] = useState('');
+  const [mapStyle, setMapStyle] = useState('dark');
+  const [mapSaved, setMapSaved] = useState(false);
+
   const load = () => api.settings().then((s) => {
     setHasApiKey(s.hasApiKey); setApiKeySource(s.apiKeySource);
     setModels(s.aiModels); setModelOptions(s.aiModelOptions); setTargets(s.pcProbeTargets);
+    setMaptilerKey(s.maptilerKey); setMapStyle(s.mapStyle);
   }).catch(() => {});
 
   const checkUpdate = () => { setUpdBusy(true); api.updateStatus().then(setUpd).catch((e) => setUpdLog(String(e))).finally(() => setUpdBusy(false)); };
@@ -179,6 +184,28 @@ export function SettingsSection({ onAiChanged, focusStart, onFocusChanged, alarm
               </label>
             )}
             {focusStart && <button className="btn danger" onClick={async () => { if (confirm('BORRAR definitivamente todas las métricas, sondas y alertas anteriores al enfoque. Irreversible. ¿Continuar?')) { await api.purgeFocus(); onFocusChanged(); } }}>Limpiar datos anteriores</button>}
+          </div>
+        </div>
+
+        {/* mapa */}
+        <div className="card">
+          <h3>Mapa geográfico</h3>
+          <p className="card-sub">El modo Mapa usa MapTiler (gratis). Crea una cuenta, copia tu API key y pégala aquí. <a href="https://cloud.maptiler.com/account/keys/" target="_blank" rel="noreferrer">Obtener API key</a>.</p>
+          <label className="field" style={{ marginBottom: 12 }}>
+            <span className="field-label">MapTiler API key</span>
+            <input className="inp" value={maptilerKey} onChange={(e) => setMaptilerKey(e.target.value)} placeholder="pega tu key de MapTiler" />
+          </label>
+          <label className="field">
+            <span className="field-label">Estilo del mapa</span>
+            <select className="inp sans" value={mapStyle} onChange={(e) => setMapStyle(e.target.value)}>
+              <option value="dark">Oscuro (dataviz)</option>
+              <option value="satellite">Satélite / híbrido</option>
+              <option value="streets">Calles</option>
+            </select>
+          </label>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 12 }}>
+            <button className="btn primary" onClick={async () => { await api.saveSettings({ maptilerKey, mapStyle }); setMapSaved(true); setTimeout(() => setMapSaved(false), 2000); }}>Guardar</button>
+            {mapSaved && <span className="status-line ok" style={{ marginTop: 0 }}>✔ Guardado — recarga la sección Mapa</span>}
           </div>
         </div>
 

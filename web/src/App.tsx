@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense, lazy } from 'react';
 import { TopologyCanvas } from './canvas/TopologyCanvas';
 import { NodeDrawer, EdgeDrawer } from './ui/DeviceDrawer';
 import { HelpModal } from './ui/HelpModal';
@@ -13,9 +13,11 @@ import { useWebSocket } from './ws';
 import { Icon, SECTION_META, type Section } from './ui/meta';
 import type { ApiNode, ApiEdge, LiveNode } from './types';
 
+const GeoMap = lazy(() => import('./map/GeoMap'));
+
 type ChatHandler = (event: string, data: { sessionId: string; text?: string; name?: string; error?: string }) => void;
 
-const NAV: Section[] = ['topology', 'alerts', 'saturation', 'ai', 'telegram', 'settings'];
+const NAV: Section[] = ['topology', 'map', 'alerts', 'saturation', 'ai', 'telegram', 'settings'];
 
 // Equipos de infraestructura cuya caída dispara la alarma de emergencia sonora.
 const INFRA_TYPES = new Set<string>(['mikrotik', 'router', 'ptp-mimosa', 'ap-ubiquiti']);
@@ -37,6 +39,7 @@ export default function App() {
   const [helpKey, setHelpKey] = useState<string | null>(null);
   const [alarmCfg, setAlarmCfg] = useState<AlarmCfg>(() => loadAlarmCfg());
   const [emergencies, setEmergencies] = useState<EmergencyItem[]>([]);
+  const [mapCfg, setMapCfg] = useState({ key: '', style: 'dark' });
   const chatHandlerRef = useRef<ChatHandler>(() => {});
   const nodesRef = useRef<ApiNode[]>([]);
   const alarmRef = useRef<AlarmCfg>(alarmCfg);
@@ -75,8 +78,11 @@ export default function App() {
   const loadAlertCount = useCallback(() => {
     api.alerts().then((r) => setOpenAlerts(r.alerts.filter((a) => !a.resolved_at).length)).catch(() => {});
   }, []);
+  const loadMap = useCallback(() => {
+    api.settings().then((s) => setMapCfg({ key: s.maptilerKey, style: s.mapStyle })).catch(() => {});
+  }, []);
 
-  useEffect(() => { reload(); loadFocus(); loadAlertCount(); }, [reload, loadFocus, loadAlertCount]);
+  useEffect(() => { reload(); loadFocus(); loadAlertCount(); loadMap(); }, [reload, loadFocus, loadAlertCount, loadMap]);
   useEffect(() => { loadAlertCount(); }, [alertRefresh, loadAlertCount]);
 
   const { send } = useWebSocket((event, data) => {
@@ -208,6 +214,18 @@ export default function App() {
               onHelp={() => setHelpKey('palette')}
             />
           )}
+          {section === 'map' && (
+            <Suspense fallback={<div className="empty-hint" style={{ padding: 30 }}>Cargando mapa…</div>}>
+              <GeoMap
+                nodes={nodes} edges={edges} live={live}
+                maptilerKey={mapCfg.key} mapStyle={mapCfg.style}
+                onSelectNode={(id) => { setSelectedNodeId(id); setSelectedEdgeId(null); }}
+                onSelectEdge={(id) => { setSelectedEdgeId(id); setSelectedNodeId(null); }}
+                onChanged={reload}
+                onHelp={() => setHelpKey('map')}
+              />
+            </Suspense>
+          )}
           {section === 'alerts' && <AlertsSection refreshKey={alertRefresh} focusStart={focusStart} onHelp={() => setHelpKey('alerts')} />}
           {section === 'saturation' && <SaturationSection edges={edges} nodes={nodes} focusStart={focusStart} onHelp={() => setHelpKey('saturation')} />}
           {section === 'ai' && <AiSection aiAvailable={aiAvailable} send={send} registerHandler={registerChatHandler} />}
@@ -216,15 +234,15 @@ export default function App() {
         </div>
       </main>
 
-      {/* DRAWERS */}
-      {section === 'topology' && selectedNode && (
+      {/* DRAWERS — funcionan tanto desde la topología como desde el mapa */}
+      {(section === 'topology' || section === 'map') && selectedNode && (
         <NodeDrawer
           node={selectedNode} live={live[selectedNode.id] ?? null}
           onChanged={reload} onDeleted={() => { setSelectedNodeId(null); reload(); }}
           onClose={() => setSelectedNodeId(null)} onHelp={(k) => setHelpKey(k)}
         />
       )}
-      {section === 'topology' && selectedEdge && (
+      {(section === 'topology' || section === 'map') && selectedEdge && (
         <EdgeDrawer
           edge={selectedEdge} nodes={nodes}
           onChanged={reload} onDeleted={() => { setSelectedEdgeId(null); reload(); }}
