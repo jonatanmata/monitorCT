@@ -32,6 +32,10 @@ export interface LiveNode {
   lossPct: number | null;
   lastSeen: number | null;
   summary: Record<string, number>;
+  /** Mayor % de utilización de un enlace con capacidad que toca el nodo. */
+  bwPct?: number;
+  /** true cuando está cerca del ancho de banda configurado (antena en naranja). */
+  bwNear?: boolean;
 }
 
 export interface Alert {

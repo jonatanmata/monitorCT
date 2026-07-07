@@ -24,14 +24,18 @@ const SUMMARY_META: Record<string, { k: string; unit: string }> = {
 export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
   const { node, live } = data;
   const isMonitor = node.type === 'monitor';
-  const status = isMonitor ? 'up' : live?.status ?? 'unknown';
+  const rawStatus = isMonitor ? 'up' : live?.status ?? 'unknown';
+  // Cerca del techo de ancho de banda: la antena se resalta en naranja aunque el ping esté "up".
+  const bwNear = !isMonitor && !!live?.bwNear && rawStatus !== 'down';
+  const status = bwNear && rawStatus === 'up' ? 'warning' : rawStatus;
   const meta = TYPE_META[node.type];
   const color = STATUS_COLOR[status];
 
   const metrics: { k: string; v: string }[] = [];
   if (!isMonitor) {
-    if (live?.latencyMs != null) metrics.push({ k: 'lat', v: `${live.latencyMs.toFixed(0)}ms` });
-    if (live?.lossPct != null && live.lossPct > 0) metrics.push({ k: 'pérd', v: `${live.lossPct}%` });
+    if (bwNear && live?.bwPct != null) metrics.push({ k: 'BW', v: `${live.bwPct}%` });
+    if (live?.latencyMs != null && metrics.length < 3) metrics.push({ k: 'lat', v: `${live.latencyMs.toFixed(0)}ms` });
+    if (live?.lossPct != null && live.lossPct > 0 && metrics.length < 3) metrics.push({ k: 'pérd', v: `${live.lossPct}%` });
     for (const [key, { k, unit }] of Object.entries(SUMMARY_META)) {
       const v = live?.summary?.[key];
       if (v !== undefined && metrics.length < 3) metrics.push({ k, v: `${v}${unit}` });
@@ -43,7 +47,11 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
       {status !== 'unknown' && (
         <div
           className="node-ring"
-          style={{ boxShadow: `0 0 0 1.5px ${color}`, opacity: status === 'down' ? 0.9 : 0.55 }}
+          style={
+            bwNear
+              ? { boxShadow: `0 0 0 2px ${color}, 0 0 14px ${color}`, opacity: 0.9, animation: 'pulse 1.4s infinite' }
+              : { boxShadow: `0 0 0 1.5px ${color}`, opacity: status === 'down' ? 0.9 : 0.55 }
+          }
         />
       )}
       {!isMonitor && <Handle type="target" position={Position.Left} />}

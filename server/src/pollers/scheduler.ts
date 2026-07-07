@@ -46,6 +46,7 @@ async function metricsCycle(): Promise<void> {
 
   // Evaluar alertas tras cada ciclo de métricas; diagnóstico IA en segundo plano
   const newAlerts = evaluateAlerts();
+  broadcastStatus(); // re-difundir con el resaltado de ancho de banda (bwNear) ya calculado
   if (aiAvailable()) {
     for (const id of newAlerts) void diagnoseAlert(id);
   }

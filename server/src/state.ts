@@ -12,6 +12,10 @@ export interface LiveNode {
   lastSeen: number | null;
   /** Últimas métricas clave para mostrar en el lienzo (cpu_pct, signal_dbm, etc.) */
   summary: Record<string, number>;
+  /** Mayor % de utilización de un enlace con capacidad que toca este nodo. */
+  bwPct?: number;
+  /** true cuando ese % supera el umbral "cerca del techo" (resalta la antena en naranja). */
+  bwNear?: boolean;
 }
 
 const liveNodes = new Map<number, LiveNode>();

@@ -26,6 +26,7 @@ const TH_DEF: { key: string; label: string; min: number; max: number; step: numb
   { key: 'lossPct', label: 'Pérdida alta', min: 1, max: 20, step: 0.5, unit: '%' },
   { key: 'latencyMs', label: 'Latencia alta', min: 20, max: 500, step: 10, unit: ' ms' },
   { key: 'crcErrorsPer5min', label: 'Errores CRC', min: 1, max: 50, step: 1, unit: '/5min' },
+  { key: 'bandwidthNearPct', label: 'Cerca del techo (ancho de banda)', min: 70, max: 99, step: 1, unit: '%' },
   { key: 'utilizationPct', label: 'Saturación', min: 40, max: 95, step: 1, unit: '%' },
   { key: 'saturationLossPct', label: 'Pérdida p/ saturación', min: 1, max: 20, step: 0.5, unit: '%' },
 ];

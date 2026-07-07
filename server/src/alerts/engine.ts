@@ -10,6 +10,7 @@ export interface Thresholds {
   latencyMs: number;          // latencia promedio (5 min) que dispara alerta
   utilizationPct: number;
   saturationLossPct: number;
+  bandwidthNearPct: number;   // % del ancho configurado del enlace que se considera "cerca del techo"
   crcErrorsPer5min: number;   // errores CRC/FCS por ventana de 5 min que disparan alerta de cable
 }
 
@@ -20,6 +21,7 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
   latencyMs: 150,
   utilizationPct: 85,
   saturationLossPct: 3,
+  bandwidthNearPct: 90,
   crcErrorsPer5min: 50,
 };
 
@@ -216,26 +218,39 @@ export function evaluateAlerts(): number[] {
   const pcLoss = db
     .prepare(`SELECT AVG(loss_pct) AS v FROM probe_results WHERE origin = 'pc' AND ts >= ?`)
     .get(since) as { v: number | null };
+  const nodeBw = new Map<number, number>(); // % de utilización más alto que toca cada nodo (para resaltar en el mapa)
   for (const edge of edges) {
     const util = avgRecent(null, edge.id, 'utilization_pct', 10);
     const satKey = { nodeId: null, edgeId: edge.id, type: 'saturation_loss' };
-    const utilKey = { nodeId: null, edgeId: edge.id, type: 'high_utilization' };
+    const bwKey = { nodeId: null, edgeId: edge.id, type: 'bandwidth_ceiling' };
     const label = edge.label || `${nodeName.get(edge.source_id) ?? '?'} → ${nodeName.get(edge.target_id) ?? '?'}`;
-    if (util === null) continue;
+    if (util === null) continue; // sin capacidad configurada no hay utilización
+    // El enlace con capacidad "moja" a sus dos extremos (antenas) para el resaltado en el mapa.
+    nodeBw.set(edge.source_id, Math.max(nodeBw.get(edge.source_id) ?? 0, util));
+    nodeBw.set(edge.target_id, Math.max(nodeBw.get(edge.target_id) ?? 0, util));
     if (util > t.utilizationPct && (pcLoss.v ?? 0) > t.saturationLossPct) {
       // Crítica: saturación confirmada (utilización alta + pérdida hacia internet).
-      resolve(utilKey);
+      resolve(bwKey);
       const id = raise(satKey, 'critical', `Enlace ${label}: utilización ${util.toFixed(0)}% sostenida coincidiendo con ${pcLoss.v!.toFixed(1)}% de pérdida hacia internet — saturación probable`);
       if (id) newAlertIds.push(id);
-    } else if (util > t.utilizationPct) {
-      // Advertencia de tráfico: utilización alta sin (todavía) pérdida confirmada.
+    } else if (util >= t.bandwidthNearPct) {
+      // Advertencia: el enlace está cerca de su ancho de banda configurado (poco margen).
       resolve(satKey);
-      const id = raise(utilKey, 'warning', `Enlace ${label}: utilización ${util.toFixed(0)}% (umbral ${t.utilizationPct}%) — tráfico alto, vigila saturación`);
+      const capNote = edge.capacity_mbps ? ` del ancho configurado (${edge.capacity_mbps} Mbps)` : '';
+      const id = raise(bwKey, 'warning', `Enlace ${label}: ${util.toFixed(0)}%${capNote} — cerca del techo, poco margen en hora pico`);
       if (id) newAlertIds.push(id);
     } else {
       resolve(satKey);
-      resolve(utilKey);
+      resolve(bwKey);
     }
+  }
+
+  // Resaltado de ancho de banda por nodo (antena naranja cerca del techo).
+  for (const node of nodes) {
+    const live = getLiveNode(node.id);
+    const pct = Math.round(nodeBw.get(node.id) ?? 0);
+    live.bwPct = pct;
+    live.bwNear = pct >= t.bandwidthNearPct;
   }
 
   return newAlertIds;
