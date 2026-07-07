@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rootOf, downstreamCasualties, type Topo } from './notifier.js';
+import { rootOf, downstreamCasualties, buildHierarchy, type Topo } from './notifier.js';
 
 // Cadena tipo WISP:  Monitor(1) → RB-Core(2) → PTP-cerca(3) → PTP-lejos(4) → AP(5) → Cliente(6)
 //                                                        (2) → Switch(7)
@@ -44,5 +44,30 @@ describe('agrupación por causa raíz', () => {
     expect(rootOf(6, topo)).toBe(6);
     expect(rootOf(2, topo)).toBe(2);
     expect(downstreamCasualties(2, topo)).toEqual([]); // sus hijos directos (3,7) están arriba
+  });
+});
+
+describe('jerarquía por distancia al Monitor (independiente de la dirección del enlace)', () => {
+  // Monitor(1) → 2 → 3 → 4.  Dibujado "bien" vs "al revés" debe dar la MISMA jerarquía.
+  const forward = [{ source_id: 1, target_id: 2 }, { source_id: 2, target_id: 3 }, { source_id: 3, target_id: 4 }];
+  const reversed = [{ source_id: 2, target_id: 1 }, { source_id: 3, target_id: 2 }, { source_id: 4, target_id: 3 }];
+
+  it('el padre es siempre el vecino más cerca del Monitor, sin importar la flecha', () => {
+    for (const edges of [forward, reversed]) {
+      const { parent, children } = buildHierarchy(edges, 1);
+      expect(parent.get(2)).toBe(1);
+      expect(parent.get(3)).toBe(2);
+      expect(parent.get(4)).toBe(3);
+      expect(children.get(3)).toEqual([4]);
+    }
+  });
+
+  it('con el enlace al revés, la raíz de la caída sigue siendo el nodo más cercano al Monitor', () => {
+    // Enlace dibujado Mimosa(3)→MikroTik(2) (al revés). Caen 2,3,4 → raíz debe ser 2 (el más cerca del Monitor).
+    const { parent, children } = buildHierarchy(reversed, 1);
+    const topo: Topo = { name: new Map(), parent, children, openDown: new Set([2, 3, 4]) };
+    expect(rootOf(4, topo)).toBe(2);
+    expect(rootOf(3, topo)).toBe(2);
+    expect(downstreamCasualties(2, topo).sort()).toEqual([3, 4]);
   });
 });

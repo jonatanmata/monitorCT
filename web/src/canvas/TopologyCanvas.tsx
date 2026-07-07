@@ -59,7 +59,11 @@ export function TopologyCanvas({
   const flowEdges: FlowEdge[] = useMemo(
     () =>
       edges.map((e) => {
-        let health = live[e.target_id]?.status ?? 'unknown';
+        // Color por el PEOR de los dos extremos (independiente de la dirección del enlace).
+        const rank = { down: 3, warning: 2, unknown: 1, up: 0 } as const;
+        const st = (s?: string) => (s === 'down' || s === 'warning' || s === 'up' ? s : 'unknown') as 'down' | 'warning' | 'up' | 'unknown';
+        const a = st(live[e.source_id]?.status), b = st(live[e.target_id]?.status);
+        let health: 'down' | 'warning' | 'up' | 'unknown' = rank[a] >= rank[b] ? a : b;
         // Si un extremo está cerca del techo de ancho de banda, el enlace se pinta naranja.
         if (health !== 'down' && (live[e.target_id]?.bwNear || live[e.source_id]?.bwNear)) health = 'warning';
         return {

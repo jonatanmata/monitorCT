@@ -55,17 +55,52 @@ function buttonsFor(alertId: number | null, nodeId: number | null): InlineButton
 
 export interface Topo { name: Map<number, string>; parent: Map<number, number>; children: Map<number, number[]>; openDown: Set<number> }
 function loadTopo(): Topo {
-  const nodes = db.prepare('SELECT id, name FROM nodes').all() as { id: number; name: string }[];
+  const nodes = db.prepare('SELECT id, name, type FROM nodes').all() as { id: number; name: string; type: string }[];
   const edges = db.prepare('SELECT source_id, target_id FROM edges').all() as { source_id: number; target_id: number }[];
   const name = new Map(nodes.map((n) => [n.id, n.name]));
-  const parent = new Map<number, number>();
-  const children = new Map<number, number[]>();
-  for (const e of edges) {
-    parent.set(e.target_id, e.source_id);
-    (children.get(e.source_id) ?? children.set(e.source_id, []).get(e.source_id)!).push(e.target_id);
-  }
+
+  const monitor = nodes.find((n) => n.type === 'monitor');
+  const { parent, children } = buildHierarchy(edges, monitor?.id);
+
   const downRows = db.prepare("SELECT node_id FROM alerts WHERE type = 'node_down' AND resolved_at IS NULL AND node_id IS NOT NULL").all() as { node_id: number }[];
   return { name, parent, children, openDown: new Set(downRows.map((r) => r.node_id)) };
+}
+
+/**
+ * Deriva la jerarquía (padre = un salto más cerca del Monitor; hijos = más lejos) a partir
+ * del grafo NO dirigido. Así la dependencia NO depende de cómo se dibujó la flecha del enlace:
+ * si un nodo intermedio cae, todo lo que queda detrás (más lejos del Monitor) aparece caído.
+ */
+export function buildHierarchy(
+  edges: { source_id: number; target_id: number }[],
+  monitorId: number | undefined,
+): { parent: Map<number, number>; children: Map<number, number[]> } {
+  const adj = new Map<number, number[]>();
+  const link = (a: number, b: number) => (adj.get(a) ?? adj.set(a, []).get(a)!).push(b);
+  for (const e of edges) { link(e.source_id, e.target_id); link(e.target_id, e.source_id); }
+
+  const dist = new Map<number, number>();
+  if (monitorId !== undefined) {
+    dist.set(monitorId, 0);
+    const q = [monitorId];
+    while (q.length) {
+      const cur = q.shift()!;
+      for (const nb of adj.get(cur) ?? []) if (!dist.has(nb)) { dist.set(nb, dist.get(cur)! + 1); q.push(nb); }
+    }
+  }
+
+  const parent = new Map<number, number>();
+  const children = new Map<number, number[]>();
+  for (const [n, neighbors] of adj) {
+    const dn = dist.get(n);
+    if (dn === undefined) continue; // no conectado al Monitor: será su propia raíz
+    for (const m of neighbors) {
+      const dm = dist.get(m);
+      if (dm === dn - 1 && !parent.has(n)) parent.set(n, m);
+      else if (dm === dn + 1) (children.get(n) ?? children.set(n, []).get(n)!).push(m);
+    }
+  }
+  return { parent, children };
 }
 
 /** Sube por los padres mientras sigan caídos; devuelve el nodo raíz de la caída. */
