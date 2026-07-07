@@ -28,6 +28,15 @@ function enabledNodes(): NodeRow[] {
   return db.prepare(`SELECT * FROM nodes WHERE enabled = 1 AND ip != ''`).all() as NodeRow[];
 }
 
+/** Evalúa alertas, redifunde el estado y lanza el diagnóstico IA de las nuevas. */
+function runAlerts(): void {
+  const newAlerts = evaluateAlerts();
+  broadcastStatus(); // redifundir con bwNear ya calculado
+  if (aiAvailable()) {
+    for (const id of newAlerts) void diagnoseAlert(id);
+  }
+}
+
 async function pingCycle(): Promise<void> {
   const nodes = enabledNodes();
   // Lotes de 8 pings simultáneos para no saturar
@@ -35,6 +44,9 @@ async function pingCycle(): Promise<void> {
     await Promise.allSettled(nodes.slice(i, i + 8).map((n) => pollNodePing(n)));
   }
   broadcastStatus();
+  // Evaluar caídas/recuperaciones en CADA ciclo de ping (15 s), no solo cada 60 s:
+  // así un reinicio corto de un equipo no se escapa entre evaluaciones.
+  runAlerts();
 }
 
 async function metricsCycle(): Promise<void> {
@@ -57,13 +69,8 @@ async function metricsCycle(): Promise<void> {
     }
   }
   broadcastStatus();
-
-  // Evaluar alertas tras cada ciclo de métricas; diagnóstico IA en segundo plano
-  const newAlerts = evaluateAlerts();
-  broadcastStatus(); // re-difundir con el resaltado de ancho de banda (bwNear) ya calculado
-  if (aiAvailable()) {
-    for (const id of newAlerts) void diagnoseAlert(id);
-  }
+  // Evaluar alertas tras el ciclo de métricas (con datos frescos de CPU/señal/utilización).
+  runAlerts();
 }
 
 async function probeCycle(): Promise<void> {
