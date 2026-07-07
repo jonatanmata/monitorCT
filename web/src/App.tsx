@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TopologyCanvas } from './canvas/TopologyCanvas';
 import { NodeDrawer, EdgeDrawer } from './ui/DeviceDrawer';
 import { HelpModal } from './ui/HelpModal';
+import { EmergencyAlarm, loadAlarmCfg, saveAlarmCfg, type AlarmCfg, type EmergencyItem } from './ui/EmergencyAlarm';
 import { AlertsSection } from './sections/AlertsSection';
 import { SaturationSection } from './sections/SaturationSection';
 import { AiSection } from './sections/AiSection';
@@ -15,6 +16,9 @@ import type { ApiNode, ApiEdge, LiveNode } from './types';
 type ChatHandler = (event: string, data: { sessionId: string; text?: string; name?: string; error?: string }) => void;
 
 const NAV: Section[] = ['topology', 'alerts', 'saturation', 'ai', 'telegram', 'settings'];
+
+// Equipos de infraestructura cuya caída dispara la alarma de emergencia sonora.
+const INFRA_TYPES = new Set<string>(['mikrotik', 'router', 'ptp-mimosa', 'ap-ubiquiti']);
 
 export default function App() {
   const [nodes, setNodes] = useState<ApiNode[]>([]);
@@ -31,7 +35,14 @@ export default function App() {
   const [openAlerts, setOpenAlerts] = useState(0);
   const [focusStart, setFocusStart] = useState<number | null>(null);
   const [helpKey, setHelpKey] = useState<string | null>(null);
+  const [alarmCfg, setAlarmCfg] = useState<AlarmCfg>(() => loadAlarmCfg());
+  const [emergencies, setEmergencies] = useState<EmergencyItem[]>([]);
   const chatHandlerRef = useRef<ChatHandler>(() => {});
+  const nodesRef = useRef<ApiNode[]>([]);
+  const alarmRef = useRef<AlarmCfg>(alarmCfg);
+
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  useEffect(() => { alarmRef.current = alarmCfg; saveAlarmCfg(alarmCfg); }, [alarmCfg]);
 
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme); localStorage.setItem('mct-theme', theme); }, [theme]);
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
@@ -48,9 +59,24 @@ export default function App() {
   useEffect(() => { loadAlertCount(); }, [alertRefresh, loadAlertCount]);
 
   const { send } = useWebSocket((event, data) => {
-    if (event === 'status') setLive(data as Record<number, LiveNode>);
-    else if (event === 'alert' || event === 'alert_resolved') setAlertRefresh((x) => x + 1);
-    else if (event.startsWith('chat_')) chatHandlerRef.current(event, data as Parameters<ChatHandler>[1]);
+    if (event === 'status') {
+      const map = data as Record<number, LiveNode>;
+      setLive(map);
+      // Limpia la alarma de emergencia de un equipo cuando vuelve a responder.
+      setEmergencies((prev) => prev.filter((e) => map[e.nodeId]?.status !== 'up'));
+    } else if (event === 'alert') {
+      setAlertRefresh((x) => x + 1);
+      const ev = data as { nodeId: number | null; type: string; message: string };
+      const cfg = alarmRef.current;
+      const node = ev.nodeId != null ? nodesRef.current.find((n) => n.id === ev.nodeId) : undefined;
+      const qualifies = cfg.enabled && ev.type === 'node_down' && !!node &&
+        (INFRA_TYPES.has(node.type) || node.watched || cfg.allDevices);
+      if (qualifies && node) {
+        setEmergencies((prev) => (prev.some((e) => e.nodeId === node.id) ? prev : [...prev, { nodeId: node.id, name: node.name, message: ev.message }]));
+      }
+    } else if (event === 'alert_resolved') {
+      setAlertRefresh((x) => x + 1);
+    } else if (event.startsWith('chat_')) chatHandlerRef.current(event, data as Parameters<ChatHandler>[1]);
   });
   const registerChatHandler = useCallback((fn: ChatHandler) => { chatHandlerRef.current = fn; }, []);
 
@@ -165,7 +191,7 @@ export default function App() {
           {section === 'saturation' && <SaturationSection edges={edges} nodes={nodes} focusStart={focusStart} onHelp={() => setHelpKey('saturation')} />}
           {section === 'ai' && <AiSection aiAvailable={aiAvailable} send={send} registerHandler={registerChatHandler} />}
           {section === 'telegram' && <TelegramSection />}
-          {section === 'settings' && <SettingsSection onAiChanged={reload} focusStart={focusStart} onFocusChanged={() => { loadFocus(); setAlertRefresh((x) => x + 1); }} />}
+          {section === 'settings' && <SettingsSection onAiChanged={reload} focusStart={focusStart} onFocusChanged={() => { loadFocus(); setAlertRefresh((x) => x + 1); }} alarm={alarmCfg} onAlarm={setAlarmCfg} />}
         </div>
       </main>
 
@@ -186,6 +212,7 @@ export default function App() {
       )}
 
       <HelpModal helpKey={helpKey} onClose={() => setHelpKey(null)} />
+      <EmergencyAlarm items={emergencies} intervalSec={alarmCfg.intervalSec} onAck={() => setEmergencies([])} />
     </div>
   );
 }

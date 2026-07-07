@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Icon } from '../ui/meta';
+import { type AlarmCfg, testAlarmSound } from '../ui/EmergencyAlarm';
 
 interface Props {
   onAiChanged: () => void;
   focusStart: number | null;
   onFocusChanged: () => void;
+  alarm: AlarmCfg;
+  onAlarm: (cfg: AlarmCfg) => void;
 }
 
 const MODEL_LABELS: Record<string, string> = {
@@ -22,7 +25,7 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   );
 }
 
-export function SettingsSection({ onAiChanged, focusStart, onFocusChanged }: Props) {
+export function SettingsSection({ onAiChanged, focusStart, onFocusChanged, alarm, onAlarm }: Props) {
   const [hasApiKey, setHasApiKey] = useState(false);
   const [apiKeySource, setApiKeySource] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState('');
@@ -176,6 +179,45 @@ export function SettingsSection({ onAiChanged, focusStart, onFocusChanged }: Pro
               </label>
             )}
             {focusStart && <button className="btn danger" onClick={async () => { if (confirm('BORRAR definitivamente todas las métricas, sondas y alertas anteriores al enfoque. Irreversible. ¿Continuar?')) { await api.purgeFocus(); onFocusChanged(); } }}>Limpiar datos anteriores</button>}
+          </div>
+        </div>
+
+        {/* alarma de emergencia */}
+        <div className="card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 4 }}>
+            <h3>Alarma de emergencia (sonora)</h3>
+            <span className="chip" style={{ background: alarm.enabled ? 'var(--upSoft)' : 'var(--panel3)', color: alarm.enabled ? 'var(--up)' : 'var(--muted)' }}>{alarm.enabled ? 'Activa' : 'Inactiva'}</span>
+          </div>
+          <p className="card-sub">Aviso emergente con sonido cuando cae un equipo de infraestructura (PTP sectorial, router, MikroTik o AP) o un equipo vigilado. Suena cada X segundos hasta que pulses «Aceptar». Se configura por navegador.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Activar alarma sonora</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Modal rojo + bip repetido en esta pantalla</div>
+              </div>
+              <Toggle on={alarm.enabled} onClick={() => onAlarm({ ...alarm, enabled: !alarm.enabled })} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Repetir el sonido cada</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Hasta que se acepte el aviso</div>
+              </div>
+              <select className="inp sans" style={{ width: 'auto' }} value={alarm.intervalSec} onChange={(e) => onAlarm({ ...alarm, intervalSec: parseInt(e.target.value, 10) })}>
+                <option value={5}>5 s</option>
+                <option value={10}>10 s</option>
+                <option value={20}>20 s</option>
+                <option value={30}>30 s</option>
+                <option value={60}>60 s</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Incluir cualquier equipo</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Por defecto solo infraestructura y vigilados; actívalo para que también suene con clientes/LiteBeam</div>
+              </div>
+              <Toggle on={alarm.allDevices} onClick={() => onAlarm({ ...alarm, allDevices: !alarm.allDevices })} />
+            </div>
+            <button className="btn" style={{ alignSelf: 'flex-start' }} onClick={() => testAlarmSound()}>Probar sonido</button>
           </div>
         </div>
 

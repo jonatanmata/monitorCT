@@ -7,6 +7,7 @@ export interface Thresholds {
   cpuPct: number;
   signalDbm: number;
   lossPct: number;
+  latencyMs: number;          // latencia promedio (5 min) que dispara alerta
   utilizationPct: number;
   saturationLossPct: number;
   crcErrorsPer5min: number;   // errores CRC/FCS por ventana de 5 min que disparan alerta de cable
@@ -16,6 +17,7 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
   cpuPct: 85,
   signalDbm: -75,
   lossPct: 10,
+  latencyMs: 150,
   utilizationPct: 85,
   saturationLossPct: 3,
   crcErrorsPer5min: 50,
@@ -195,6 +197,16 @@ export function evaluateAlerts(): number[] {
       resolve(lossKey);
     }
 
+    // Latencia alta al equipo
+    const lat = avgRecent(node.id, null, 'latency_ms', 5);
+    const latKey = { nodeId: node.id, edgeId: null, type: 'high_latency' };
+    if (lat !== null && lat > t.latencyMs && live.status !== 'down') {
+      const id = raise(latKey, 'warning', `${node.name}: latencia ${lat.toFixed(0)} ms promedio en los últimos 5 min (umbral ${t.latencyMs} ms)`);
+      if (id) newAlertIds.push(id);
+    } else if (lat !== null) {
+      resolve(latKey);
+    }
+
     // ---- Diagnóstico físico (cable UTP) por interfaz ----
     checkPhysical(node, t, newAlertIds);
   }
@@ -206,17 +218,23 @@ export function evaluateAlerts(): number[] {
     .get(since) as { v: number | null };
   for (const edge of edges) {
     const util = avgRecent(null, edge.id, 'utilization_pct', 10);
-    const key = { nodeId: null, edgeId: edge.id, type: 'saturation_loss' };
+    const satKey = { nodeId: null, edgeId: edge.id, type: 'saturation_loss' };
+    const utilKey = { nodeId: null, edgeId: edge.id, type: 'high_utilization' };
     const label = edge.label || `${nodeName.get(edge.source_id) ?? '?'} → ${nodeName.get(edge.target_id) ?? '?'}`;
-    if (util !== null && util > t.utilizationPct && (pcLoss.v ?? 0) > t.saturationLossPct) {
-      const id = raise(
-        key,
-        'critical',
-        `Enlace ${label}: utilización ${util.toFixed(0)}% sostenida coincidiendo con ${pcLoss.v!.toFixed(1)}% de pérdida hacia internet — saturación probable`,
-      );
+    if (util === null) continue;
+    if (util > t.utilizationPct && (pcLoss.v ?? 0) > t.saturationLossPct) {
+      // Crítica: saturación confirmada (utilización alta + pérdida hacia internet).
+      resolve(utilKey);
+      const id = raise(satKey, 'critical', `Enlace ${label}: utilización ${util.toFixed(0)}% sostenida coincidiendo con ${pcLoss.v!.toFixed(1)}% de pérdida hacia internet — saturación probable`);
       if (id) newAlertIds.push(id);
-    } else if (util !== null && util <= t.utilizationPct) {
-      resolve(key);
+    } else if (util > t.utilizationPct) {
+      // Advertencia de tráfico: utilización alta sin (todavía) pérdida confirmada.
+      resolve(satKey);
+      const id = raise(utilKey, 'warning', `Enlace ${label}: utilización ${util.toFixed(0)}% (umbral ${t.utilizationPct}%) — tráfico alto, vigila saturación`);
+      if (id) newAlertIds.push(id);
+    } else {
+      resolve(satKey);
+      resolve(utilKey);
     }
   }
 
