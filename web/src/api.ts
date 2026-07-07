@@ -70,6 +70,13 @@ export const api = {
   alerts: () => http<{ alerts: Alert[] }>('/api/alerts'),
   resolveAlert: (id: number) => http<{ ok: boolean }>(`/api/alerts/${id}/resolve`, { method: 'POST' }),
 
+  getFocus: () => http<{ focusStart: number | null }>('/api/focus'),
+  setFocus: (start?: number) =>
+    http<{ ok: boolean; focusStart: number }>('/api/focus', { method: 'PUT', body: JSON.stringify(start ? { start } : {}) }),
+  clearFocus: () => http<{ ok: boolean; focusStart: null }>('/api/focus', { method: 'DELETE' }),
+  purgeFocus: () =>
+    http<{ ok: boolean; deleted: { metrics: number; probes: number; alerts: number } }>('/api/focus/purge', { method: 'POST' }),
+
   settings: () =>
     http<{
       thresholds: Record<string, number>;

@@ -1,4 +1,4 @@
-import { db, type NodeRow, getSetting } from '../db/index.js';
+import { db, type NodeRow, getSetting, withFocus } from '../db/index.js';
 import { decryptJson } from '../db/crypto.js';
 import type { Credentials } from '../db/index.js';
 import { pingHost } from './ping.js';
@@ -85,7 +85,7 @@ export interface LossMatrixCell {
 
 /** Matriz de pérdida por par (origen→destino) en un rango de horas hacia atrás. */
 export function lossMatrix(hoursBack: number): LossMatrixCell[] {
-  const since = Math.floor(Date.now() / 1000) - hoursBack * 3600;
+  const since = withFocus(Math.floor(Date.now() / 1000) - hoursBack * 3600);
   const rows = db
     .prepare(
       `SELECT origin, src_address, target, COUNT(*) AS samples,
@@ -125,7 +125,7 @@ export interface HourlyLossRow {
  * del enlace indicado (o de todos si edgeId es null).
  */
 export function hourlyCorrelation(edgeId: number | null, daysBack: number): HourlyLossRow[] {
-  const since = Math.floor(Date.now() / 1000) - daysBack * 24 * 3600;
+  const since = withFocus(Math.floor(Date.now() / 1000) - daysBack * 24 * 3600);
   const tzOffsetMin = new Date().getTimezoneOffset(); // minutos a RESTAR de UTC
 
   const loss = db

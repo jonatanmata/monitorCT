@@ -4,6 +4,7 @@ import { InfoTip } from '../components/InfoTip';
 
 interface Props {
   onAiChanged: () => void; // recargar topología para refrescar el badge "IA activa"
+  onFocusChanged: () => void; // avisar a la app que el enfoque cambió
 }
 
 type KeyStatus = { kind: 'ok' | 'fail' | 'pending'; text: string } | null;
@@ -17,7 +18,7 @@ const THRESHOLD_FIELDS: { key: string; label: string; help: string }[] = [
   { key: 'crcErrorsPer5min', label: 'Errores CRC / 5 min', help: 'Cantidad de errores CRC/FCS por puerto en 5 minutos que dispara alerta de cable. Errores CRC crecientes indican cable dañado, conector RJ45 mal ponchado o interferencia (EMI). También se alerta si un puerto Gigabit baja a 100 Mbps o queda en half-duplex.' },
 ];
 
-export function SettingsPanel({ onAiChanged }: Props) {
+export function SettingsPanel({ onAiChanged, onFocusChanged }: Props) {
   const [hasApiKey, setHasApiKey] = useState(false);
   const [apiKeySource, setApiKeySource] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState('');
@@ -27,6 +28,10 @@ export function SettingsPanel({ onAiChanged }: Props) {
   const [thresholds, setThresholds] = useState<Record<string, number>>({});
   const [targets, setTargets] = useState('');
   const [saved, setSaved] = useState(false);
+
+  // Modo enfoque
+  const [focusStart, setFocusStart] = useState<number | null>(null);
+  const [purgeMsg, setPurgeMsg] = useState<string | null>(null);
 
   // Telegram
   type TgCfg = { enabled: boolean; hasToken: boolean; chatId: string; minSeverity: 'info' | 'warning' | 'critical'; notifyResolved: boolean; notifyDiagnosis: boolean };
@@ -66,7 +71,25 @@ export function SettingsPanel({ onAiChanged }: Props) {
     await api.saveSettings(patch);
   };
 
-  useEffect(() => { void load(); void checkUpdate(); }, []);
+  useEffect(() => { void load(); void checkUpdate(); void api.getFocus().then((f) => setFocusStart(f.focusStart)).catch(() => {}); }, []);
+
+  const startFocus = async () => {
+    if (!confirm('Iniciar nueva investigación desde ahora: el análisis considerará solo los datos nuevos. Los viejos no se borran.')) return;
+    const f = await api.setFocus();
+    setFocusStart(f.focusStart);
+    onFocusChanged();
+  };
+  const stopFocus = async () => {
+    await api.clearFocus();
+    setFocusStart(null);
+    onFocusChanged();
+  };
+  const purgeFocus = async () => {
+    if (!confirm('BORRAR definitivamente todas las métricas, sondas y alertas anteriores al inicio del enfoque. Esto no se puede deshacer. ¿Continuar?')) return;
+    const r = await api.purgeFocus();
+    setPurgeMsg(`Borrado: ${r.deleted.metrics} métricas, ${r.deleted.probes} sondas, ${r.deleted.alerts} alertas viejas.`);
+    onFocusChanged();
+  };
 
   const saveKey = async () => {
     const key = keyInput.trim();
@@ -267,6 +290,30 @@ export function SettingsPanel({ onAiChanged }: Props) {
           placeholder="8.8.8.8, IP gateway público"
           onChange={(e) => setTargets(e.target.value)}
         />
+      </div>
+
+      <div className="settings-section">
+        <h3>
+          🎯 Modo enfoque (nueva investigación)
+          <InfoTip text="El sistema guarda meses de datos. Cuando quieras atacar un problema NUEVO, inicia una investigación: a partir de ese momento la matriz de pérdida, la saturación, las alertas y la IA consideran solo los datos nuevos, para no mezclar reportes viejos. Los datos anteriores NO se borran (el historial de cada nodo se sigue viendo completo). Si quieres borrarlos de verdad, usa «Limpiar datos anteriores»." />
+        </h3>
+        {focusStart ? (
+          <div>
+            <div className="key-status ok">🎯 Enfoque activo desde {new Date(focusStart * 1000).toLocaleString('es-CO')}</div>
+            <div className="btn-row">
+              <button className="ghost" onClick={() => void stopFocus()}>Quitar enfoque</button>
+              <button className="danger" onClick={() => void purgeFocus()}>Limpiar datos anteriores</button>
+            </div>
+            {purgeMsg && <div className="key-status ok">{purgeMsg}</div>}
+          </div>
+        ) : (
+          <div>
+            <p className="small" style={{ marginTop: 0 }}>Sin enfoque activo: el análisis considera todo el historial.</p>
+            <div className="btn-row">
+              <button className="primary" onClick={() => void startFocus()}>Iniciar nueva investigación (desde ahora)</button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="settings-section">

@@ -51,6 +51,23 @@ body {
   background: linear-gradient(90deg, #e6ebf5, var(--accent-soft));
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
 }
+.focus-btn {
+  font-size: 12px; padding: 5px 12px; border-radius: 999px; font-weight: 600; cursor: pointer;
+  background: var(--surface-2); color: var(--accent-soft); border: 1px solid var(--border);
+  transition: all 0.15s;
+}
+.focus-btn:hover { background: var(--surface-hover); border-color: var(--accent); }
+.focus-banner {
+  font-size: 12px; padding: 5px 12px; border-radius: 999px; font-weight: 600;
+  background: rgba(245, 158, 11, 0.14); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.3);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.focus-banner a { color: #fcd34d; text-decoration: underline; }
+.focus-note {
+  font-size: 12px; padding: 7px 10px; border-radius: var(--radius-sm); margin-bottom: 10px;
+  background: rgba(245, 158, 11, 0.1); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.22);
+}
+
 .ai-badge {
   font-size: 12px; padding: 4px 12px; border-radius: 999px; font-weight: 600;
   display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;

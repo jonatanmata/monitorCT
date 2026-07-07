@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { db, getSetting, setSetting, type NodeRow, type EdgeRow } from '../db/index.js';
+import { db, getSetting, setSetting, focusStart, type NodeRow, type EdgeRow } from '../db/index.js';
 import { encryptJson, decryptJson } from '../db/crypto.js';
 import { toolDefinitions, executeTool } from './tools.js';
 import { sendTelegram, formatDiagnosisMessage, telegramNotifyDiagnosis } from '../alerts/telegram.js';
@@ -84,7 +84,12 @@ export function buildSystemPrompt(): string {
     .map((e) => `- [arista ${e.id}] ${nodeName.get(e.source_id)} → ${nodeName.get(e.target_id)}${e.capacity_mbps ? ` (capacidad ${e.capacity_mbps} Mbps)` : ''}`)
     .join('\n');
 
-  return `Eres el ingeniero de diagnóstico de una red WISP (proveedor inalámbrico rural) en Colombia. Tu trabajo es encontrar el punto exacto de la red que causa problemas, usando las herramientas disponibles, y explicar la causa y los pasos a seguir en español claro para el operador de la red.
+  const fs = focusStart();
+  const focusNote = fs > 0
+    ? `\n\n## INVESTIGACIÓN ACTUAL (modo enfoque)\nEnfócate en datos desde ${new Date(fs * 1000).toLocaleString('es-CO')}. Ignora reportes anteriores a esa fecha: corresponden a un problema pasado ya resuelto. Las herramientas ya recortan los datos a este período.`
+    : '';
+
+  return `Eres el ingeniero de diagnóstico de una red WISP (proveedor inalámbrico rural) en Colombia.${focusNote} Tu trabajo es encontrar el punto exacto de la red que causa problemas, usando las herramientas disponibles, y explicar la causa y los pasos a seguir en español claro para el operador de la red.
 
 ## Topología actual (grafo de dependencias — la señal fluye del origen al destino)
 Nodos:

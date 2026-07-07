@@ -23,7 +23,21 @@ export default function App() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
   const [tab, setTab] = useState<Tab>('nodo');
   const [alertRefresh, setAlertRefresh] = useState(0);
+  const [focusStart, setFocusStart] = useState<number | null>(null);
   const chatHandlerRef = useRef<ChatHandler>(() => {});
+
+  const loadFocus = useCallback(() => {
+    api.getFocus().then((f) => setFocusStart(f.focusStart)).catch(() => {});
+  }, []);
+
+  const startFocus = useCallback(() => {
+    if (!confirm('Iniciar una nueva investigación: a partir de ahora el análisis (matriz de pérdida, saturación, alertas y la IA) considerará solo los datos nuevos. Los datos viejos NO se borran (puedes limpiarlos aparte en Ajustes). ¿Continuar?')) return;
+    api.setFocus().then((f) => { setFocusStart(f.focusStart); setAlertRefresh((x) => x + 1); }).catch(() => {});
+  }, []);
+
+  const stopFocus = useCallback(() => {
+    api.clearFocus().then(() => { setFocusStart(null); setAlertRefresh((x) => x + 1); }).catch(() => {});
+  }, []);
 
   const reload = useCallback(() => {
     api.topology().then((t) => {
@@ -34,7 +48,7 @@ export default function App() {
     }).catch(() => {});
   }, []);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { reload(); loadFocus(); }, [reload, loadFocus]);
 
   const { send } = useWebSocket((event, data) => {
     if (event === 'status') {
@@ -60,6 +74,16 @@ export default function App() {
         <h1>📡 MonitorCt</h1>
         <span className="small">Monitoreo de red WISP con diagnóstico IA</span>
         <span style={{ flex: 1 }} />
+        {focusStart ? (
+          <span className="focus-banner">
+            🎯 Enfoque desde {new Date(focusStart * 1000).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+            <a href="#" onClick={(e) => { e.preventDefault(); stopFocus(); }}>quitar</a>
+          </span>
+        ) : (
+          <button className="focus-btn" onClick={startFocus} title="Enfocar el análisis en un problema nuevo, ignorando los datos viejos">
+            🎯 Nueva investigación
+          </button>
+        )}
         <span className={`ai-badge ${aiAvailable ? 'ai-on' : 'ai-off'}`}>
           {aiAvailable ? 'IA activa' : 'IA sin configurar'}
         </span>
@@ -117,10 +141,10 @@ export default function App() {
                 Haz clic en un equipo o enlace para ver su detalle aquí.
               </div>
             )}
-            {tab === 'alertas' && <AlertsPanel refreshKey={alertRefresh} />}
-            {tab === 'saturacion' && <SaturationPanel edges={edges} nodes={nodes} />}
+            {tab === 'alertas' && <AlertsPanel refreshKey={alertRefresh} focusStart={focusStart} />}
+            {tab === 'saturacion' && <SaturationPanel edges={edges} nodes={nodes} focusStart={focusStart} />}
             {tab === 'ia' && <ChatPanel aiAvailable={aiAvailable} send={send} registerHandler={registerChatHandler} />}
-            {tab === 'ajustes' && <SettingsPanel onAiChanged={reload} />}
+            {tab === 'ajustes' && <SettingsPanel onAiChanged={reload} onFocusChanged={() => { loadFocus(); setAlertRefresh((x) => x + 1); }} />}
           </div>
         </div>
       </div>

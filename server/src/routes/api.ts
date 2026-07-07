@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { db, getSetting, setSetting, NODE_TYPES, type NodeRow, type EdgeRow, type Credentials, type NodeType } from '../db/index.js';
+import { db, getSetting, setSetting, NODE_TYPES, focusStart, setFocusStart, clearFocus, withFocus, type NodeRow, type EdgeRow, type Credentials, type NodeType } from '../db/index.js';
 import { encryptJson, decryptJson } from '../db/crypto.js';
 import { allLiveNodes, dropLiveNode } from '../state.js';
 import { pingHost } from '../pollers/ping.js';
@@ -317,7 +317,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
   // ---------- Alertas ----------
   app.get('/api/alerts', async (req) => {
     const q = req.query as { hoursBack?: string };
-    const since = Math.floor(Date.now() / 1000) - Math.min(parseFloat(q.hoursBack ?? '72'), 720) * 3600;
+    const since = withFocus(Math.floor(Date.now() / 1000) - Math.min(parseFloat(q.hoursBack ?? '72'), 720) * 3600);
     const rows = db
       .prepare(
         `SELECT a.*, n.name AS node_name FROM alerts a
@@ -333,6 +333,39 @@ export function registerApiRoutes(app: FastifyInstance): void {
     const id = parseInt((req.params as { id: string }).id, 10);
     db.prepare('UPDATE alerts SET resolved_at = unixepoch() WHERE id = ? AND resolved_at IS NULL').run(id);
     return { ok: true };
+  });
+
+  // ---------- Modo enfoque (nueva investigación) ----------
+  app.get('/api/focus', async () => {
+    const fs = focusStart();
+    return { focusStart: fs > 0 ? fs : null };
+  });
+
+  app.put('/api/focus', async (req) => {
+    const b = (req.body ?? {}) as { start?: number };
+    const ts = b.start && b.start > 0 ? b.start : Math.floor(Date.now() / 1000);
+    setFocusStart(ts);
+    return { ok: true, focusStart: ts };
+  });
+
+  app.delete('/api/focus', async () => {
+    clearFocus();
+    return { ok: true, focusStart: null };
+  });
+
+  /** Borra datos anteriores al enfoque (métricas, sondas) y limpia alertas viejas. */
+  app.post('/api/focus/purge', async (_req, reply) => {
+    const fs = focusStart();
+    if (fs <= 0) return reply.code(400).send({ error: 'No hay un enfoque activo' });
+    const del = db.transaction(() => {
+      const m = db.prepare('DELETE FROM metrics WHERE ts < ?').run(fs);
+      const p = db.prepare('DELETE FROM probe_results WHERE ts < ?').run(fs);
+      // Resolver alertas abiertas anteriores al enfoque y borrar las ya resueltas anteriores
+      db.prepare('UPDATE alerts SET resolved_at = unixepoch() WHERE created_at < ? AND resolved_at IS NULL').run(fs);
+      const a = db.prepare('DELETE FROM alerts WHERE created_at < ? AND resolved_at IS NOT NULL').run(fs);
+      return { metrics: m.changes, probes: p.changes, alerts: a.changes };
+    })();
+    return { ok: true, deleted: del };
   });
 
   // ---------- Ajustes ----------

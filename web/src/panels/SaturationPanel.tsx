@@ -17,7 +17,7 @@ function heatColor(loss: number): string {
   return '#991b1b';
 }
 
-export function SaturationPanel({ edges, nodes }: { edges: ApiEdge[]; nodes: ApiNode[] }) {
+export function SaturationPanel({ edges, nodes, focusStart }: { edges: ApiEdge[]; nodes: ApiNode[]; focusStart: number | null }) {
   const [matrix, setMatrix] = useState<LossMatrixCell[]>([]);
   const [hourly, setHourly] = useState<HourlyRow[]>([]);
   const [edgeId, setEdgeId] = useState<number | null>(null);
@@ -35,6 +35,11 @@ export function SaturationPanel({ edges, nodes }: { edges: ApiEdge[]; nodes: Api
 
   return (
     <div>
+      {focusStart && (
+        <div className="focus-note">
+          🎯 Modo enfoque: mostrando solo datos desde {new Date(focusStart * 1000).toLocaleString('es-CO')}
+        </div>
+      )}
       <h3>
         Matriz de pérdida (24 h) — origen → destino externo
         <InfoTip text="Cada fila es un par «desde dónde se hace ping → hacia qué IP de internet» con su pérdida promedio de las últimas 24 h. Cómo leerla: si el PC de monitoreo y los pings con IP de origen LAN («Src») pierden, pero el ping por defecto de los routers no, la pérdida está en el camino de reenvío (colas/saturación de un enlace), NO en el proveedor. Si TODOS los orígenes pierden, incluso los routers, el problema está aguas arriba (el dedicado o el ISP). Verde <2%, amarillo 2–10%, rojo >10%." />

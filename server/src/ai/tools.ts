@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { db, type NodeRow, type EdgeRow } from '../db/index.js';
+import { db, withFocus, type NodeRow, type EdgeRow } from '../db/index.js';
 import { allLiveNodes } from '../state.js';
 import { nodeCredentials } from '../pollers/collector.js';
 import { pingHost } from '../pollers/ping.js';
@@ -131,7 +131,7 @@ async function execGetTopology(): Promise<unknown> {
 
 async function execGetMetrics(input: { nodeId?: number; edgeId?: number; metric: string; hoursBack?: number }): Promise<unknown> {
   const hours = Math.min(input.hoursBack ?? 6, 720);
-  const since = Math.floor(Date.now() / 1000) - hours * 3600;
+  const since = withFocus(Math.floor(Date.now() / 1000) - hours * 3600);
   const metricNames = hours > 48 ? [`agg5m:${input.metric}`] : [input.metric, `agg5m:${input.metric}`];
   const rows = db
     .prepare(
@@ -209,7 +209,7 @@ async function execCorrelateSaturation(input: { edgeId?: number; daysBack?: numb
 }
 
 async function execGetRecentAlerts(input: { hoursBack?: number }): Promise<unknown> {
-  const since = Math.floor(Date.now() / 1000) - Math.min(input.hoursBack ?? 24, 720) * 3600;
+  const since = withFocus(Math.floor(Date.now() / 1000) - Math.min(input.hoursBack ?? 24, 720) * 3600);
   const rows = db
     .prepare(
       `SELECT a.id, a.severity, a.type, a.message, a.created_at, a.resolved_at, n.name AS node_name

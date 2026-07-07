@@ -11,6 +11,7 @@ Sistema de monitoreo para redes inalámbricas de campo (WISP) con equipos **Mikr
 - ✈️ **Alertas por Telegram**: recibe las alertas y sus diagnósticos de IA directamente en tu Telegram (configurable desde la interfaz, sin tocar archivos).
 - 🔌 **Diagnóstico de cable UTP (capa física)**: en MikroTik, prueba **TDR** bajo demanda que dice par por par si el cable está OK/abierto/en corto y **a qué distancia** está la falla. Además vigila de forma continua la **velocidad negociada**, el **dúplex** y los **errores CRC/FCS** de cada puerto, y alerta cuando algo apunta a cable/conector/EMI (ej. un Gigabit que baja a 100 Mbps). La IA lo usa para descartar problemas físicos antes de culpar RF o saturación.
 - 🔄 **Auto-actualización desde GitHub**: cada vez que reinicias la app, comprueba si hay una versión nueva en el repositorio y, si la hay, la descarga y compila sola antes de arrancar (tolerante a fallos: si algo sale mal, arranca con la versión que ya tenías). También hay un panel en ⚙ Ajustes con la versión actual, «Buscar actualizaciones» y «Actualizar ahora». Requiere haber instalado con `git clone`.
+- 🎯 **Modo enfoque (nueva investigación)**: como el sistema guarda meses de datos, al atacar un problema nuevo puedes pulsar «Nueva investigación» y a partir de ahí la matriz de pérdida, la saturación, las alertas y la IA consideran solo los datos nuevos (sin borrar el historial). Opcionalmente, «Limpiar datos anteriores» los elimina de verdad.
 
 ## Requisitos
 

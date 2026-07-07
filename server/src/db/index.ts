@@ -111,6 +111,25 @@ export function setSetting(key: string, value: string): void {
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
 }
 
+/**
+ * Modo enfoque ("nueva investigación"): timestamp desde el cual las superficies
+ * de análisis (matriz de pérdida, correlación, alertas, IA) consideran los datos.
+ * 0 = sin enfoque (se ve todo).
+ */
+export function focusStart(): number {
+  return parseInt(getSetting('focus_start', '0'), 10) || 0;
+}
+export function setFocusStart(ts: number): void {
+  setSetting('focus_start', String(Math.floor(ts)));
+}
+export function clearFocus(): void {
+  setSetting('focus_start', '0');
+}
+/** Aplica el piso de enfoque a un "since" (segundos epoch). */
+export function withFocus(since: number): number {
+  return Math.max(since, focusStart());
+}
+
 /** Borra métricas crudas de más de 48h y resultados de sondas de más de 30 días. */
 export function pruneOldData(): void {
   const now = Math.floor(Date.now() / 1000);
