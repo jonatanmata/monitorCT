@@ -14,6 +14,7 @@ export interface ApiNode {
   probeSrcAddresses: string[];
   hasRouterosCreds: boolean;
   snmpCommunity: string;
+  watched: boolean;
 }
 
 export interface ApiEdge {

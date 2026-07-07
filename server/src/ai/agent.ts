@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { db, getSetting, setSetting, focusStart, type NodeRow, type EdgeRow } from '../db/index.js';
 import { encryptJson, decryptJson } from '../db/crypto.js';
 import { toolDefinitions, executeTool } from './tools.js';
-import { sendTelegram, formatDiagnosisMessage, telegramNotifyDiagnosis } from '../alerts/telegram.js';
+import { sendTelegram, formatDiagnosisMessage, telegramNotifyDiagnosis, routeChat, isMuted, isQuietNow, isWatched, type Severity } from '../alerts/telegram.js';
 
 const MAX_ITERATIONS = 12;
 
@@ -208,7 +208,7 @@ export async function runAgent(
 export async function diagnoseAlert(alertId: number): Promise<void> {
   const alert = db
     .prepare(`SELECT a.*, n.name AS node_name FROM alerts a LEFT JOIN nodes n ON n.id = a.node_id WHERE a.id = ?`)
-    .get(alertId) as { id: number; type: string; message: string; node_name: string | null } | undefined;
+    .get(alertId) as { id: number; type: string; message: string; node_name: string | null; severity: Severity; node_id: number | null } | undefined;
   if (!alert) return;
 
   try {
@@ -224,7 +224,11 @@ export async function diagnoseAlert(alertId: number): Promise<void> {
       { model: getEconomicModel() },
     );
     db.prepare('UPDATE alerts SET ai_diagnosis = ? WHERE id = ?').run(finalText, alertId);
-    if (finalText && telegramNotifyDiagnosis()) void sendTelegram(formatDiagnosisMessage(alert.message, finalText));
+    // Enviar el diagnóstico respetando silenciado/horario/vigilancia y enrutando por severidad.
+    const quietBlocks = isQuietNow() && alert.severity !== 'critical' && !isWatched(alert.node_id);
+    if (finalText && telegramNotifyDiagnosis() && !isMuted(alert.node_id) && !quietBlocks) {
+      void sendTelegram(formatDiagnosisMessage(alert.message, finalText), { chatId: routeChat(alert.severity) });
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     db.prepare('UPDATE alerts SET ai_diagnosis = ? WHERE id = ?').run(`(No fue posible el diagnóstico IA: ${msg})`, alertId);

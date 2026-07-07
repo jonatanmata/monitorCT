@@ -8,7 +8,8 @@ import { testSnmp } from '../pollers/snmp.js';
 import { lossMatrix, hourlyCorrelation } from '../pollers/probes.js';
 import { getThresholds } from '../alerts/engine.js';
 import { aiAvailable, resolveApiKey, saveApiKey, clearApiKey, testApiKey, getAiModels, setAiModels, AI_MODELS } from '../ai/agent.js';
-import { getTelegramConfigSafe, saveTelegramConfig, clearTelegramConfig, testTelegram, detectChatIds } from '../alerts/telegram.js';
+import { getTelegramConfigSafe, saveTelegramConfig, clearTelegramConfig, testTelegram, detectChatIds, setWatched, isWatched } from '../alerts/telegram.js';
+import { syncTelegramPoller, stopTelegramPoller } from '../alerts/telegram-poller.js';
 import { getUpdateStatus, applyUpdate, setAutoUpdate } from '../update.js';
 
 interface NodeBody {
@@ -53,6 +54,7 @@ function nodeToJson(n: NodeRow) {
     // Nunca devolver contraseñas; solo indicar qué hay configurado
     hasRouterosCreds: Boolean(creds.routerosUser),
     snmpCommunity: creds.snmpCommunity ?? '',
+    watched: isWatched(n.id),
   };
 }
 
@@ -447,13 +449,30 @@ export function registerApiRoutes(app: FastifyInstance): void {
     const b = req.body as {
       enabled?: boolean; botToken?: string; chatId?: string; clear?: boolean;
       minSeverity?: 'info' | 'warning' | 'critical'; notifyResolved?: boolean; notifyDiagnosis?: boolean;
+      criticalChatId?: string; quietStart?: number | null; quietEnd?: number | null;
+      actionButtons?: boolean; groupWindowSec?: number;
     };
-    if (b.clear) clearTelegramConfig();
-    else saveTelegramConfig({
-      enabled: b.enabled, botToken: b.botToken, chatId: b.chatId,
-      minSeverity: b.minSeverity, notifyResolved: b.notifyResolved, notifyDiagnosis: b.notifyDiagnosis,
-    });
+    if (b.clear) { clearTelegramConfig(); stopTelegramPoller(); }
+    else {
+      saveTelegramConfig({
+        enabled: b.enabled, botToken: b.botToken, chatId: b.chatId,
+        minSeverity: b.minSeverity, notifyResolved: b.notifyResolved, notifyDiagnosis: b.notifyDiagnosis,
+        criticalChatId: b.criticalChatId, quietStart: b.quietStart, quietEnd: b.quietEnd,
+        actionButtons: b.actionButtons, groupWindowSec: b.groupWindowSec,
+      });
+      syncTelegramPoller();
+    }
     return { ok: true, telegram: getTelegramConfigSafe() };
+  });
+
+  // Vigilancia dedicada de un equipo: sus alertas siempre notifican (ignora severidad mínima y horario silencioso).
+  app.put('/api/nodes/:id/watch', async (req, reply) => {
+    const id = parseInt((req.params as { id: string }).id, 10);
+    const node = db.prepare('SELECT id FROM nodes WHERE id = ?').get(id);
+    if (!node) return reply.code(404).send({ error: 'Nodo no encontrado' });
+    const b = (req.body ?? {}) as { watch?: boolean };
+    setWatched(id, Boolean(b.watch));
+    return { ok: true, watched: isWatched(id) };
   });
 
   app.post('/api/settings/telegram/test', async (req) => {

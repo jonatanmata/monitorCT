@@ -103,6 +103,8 @@ export const api = {
       telegram: {
         enabled: boolean; hasToken: boolean; chatId: string;
         minSeverity: 'info' | 'warning' | 'critical'; notifyResolved: boolean; notifyDiagnosis: boolean;
+        criticalChatId: string; quietStart: number | null; quietEnd: number | null;
+        actionButtons: boolean; groupWindowSec: number;
       };
       aiModels: { diagnosis: string; economic: string };
       aiModelOptions: string[];
@@ -121,9 +123,14 @@ export const api = {
       body: JSON.stringify(key ? { key } : {}),
     }),
 
+  watchNode: (id: number, watch: boolean) =>
+    http<{ ok: boolean; watched: boolean }>(`/api/nodes/${id}/watch`, { method: 'PUT', body: JSON.stringify({ watch }) }),
+
   saveTelegram: (body: {
     enabled?: boolean; botToken?: string; chatId?: string; clear?: boolean;
     minSeverity?: 'info' | 'warning' | 'critical'; notifyResolved?: boolean; notifyDiagnosis?: boolean;
+    criticalChatId?: string; quietStart?: number | null; quietEnd?: number | null;
+    actionButtons?: boolean; groupWindowSec?: number;
   }) =>
     http<{ ok: boolean; telegram: { enabled: boolean; hasToken: boolean; chatId: string } }>(
       '/api/settings/telegram',

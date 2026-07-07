@@ -58,6 +58,8 @@ async function main(): Promise<void> {
   }
 
   startScheduler();
+  const { syncTelegramPoller } = await import('./alerts/telegram-poller.js');
+  syncTelegramPoller(); // arranca el poller de botones si está configurado
 
   await app.listen({ port: PORT, host: '0.0.0.0' });
   console.log(`MonitorCt escuchando en http://localhost:${PORT}`);

@@ -3,7 +3,10 @@ import { api } from '../api';
 import { Icon } from '../ui/meta';
 
 type Sev = 'info' | 'warning' | 'critical';
-type TgCfg = { enabled: boolean; hasToken: boolean; chatId: string; minSeverity: Sev; notifyResolved: boolean; notifyDiagnosis: boolean };
+type TgCfg = {
+  enabled: boolean; hasToken: boolean; chatId: string; minSeverity: Sev; notifyResolved: boolean; notifyDiagnosis: boolean;
+  criticalChatId: string; quietStart: number | null; quietEnd: number | null; actionButtons: boolean; groupWindowSec: number;
+};
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -14,7 +17,7 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
 }
 
 export function TelegramSection() {
-  const [cfg, setCfg] = useState<TgCfg>({ enabled: false, hasToken: false, chatId: '', minSeverity: 'warning', notifyResolved: true, notifyDiagnosis: true });
+  const [cfg, setCfg] = useState<TgCfg>({ enabled: false, hasToken: false, chatId: '', minSeverity: 'warning', notifyResolved: true, notifyDiagnosis: true, criticalChatId: '', quietStart: null, quietEnd: null, actionButtons: false, groupWindowSec: 25 });
   const [token, setToken] = useState('');
   const [chatId, setChatId] = useState('');
   const [detecting, setDetecting] = useState(false);
@@ -124,6 +127,55 @@ export function TelegramSection() {
               </div>
               <Toggle on={cfg.notifyDiagnosis} onClick={() => savePref({ notifyDiagnosis: !cfg.notifyDiagnosis })} />
             </div>
+          </div>
+        </div>
+
+        {/* anti-spam, horario y botones */}
+        <div className="card">
+          <h3 style={{ marginBottom: 4 }}>Anti-spam, horario y acciones</h3>
+          <p className="card-sub">Agrupa por causa raíz, evita ruido nocturno y permite resolver desde el chat.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Botones de acción en el chat</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Añade «Resolver» y «Silenciar 1h» a cada alerta (requiere el bot corriendo)</div>
+              </div>
+              <Toggle on={cfg.actionButtons} onClick={() => savePref({ actionButtons: !cfg.actionButtons })} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Ventana de agrupación</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Junta alertas de una misma ráfaga; una caída aguas arriba no dispara N mensajes</div>
+              </div>
+              <select className="inp sans" style={{ width: 'auto' }} value={cfg.groupWindowSec} onChange={(e) => savePref({ groupWindowSec: parseInt(e.target.value, 10) })}>
+                <option value={0}>Sin agrupar</option>
+                <option value={15}>15 s</option>
+                <option value={25}>25 s</option>
+                <option value={45}>45 s</option>
+                <option value={60}>60 s</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Horario silencioso</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>No molestar entre estas horas (las críticas y los equipos vigilados igual pasan)</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <select className="inp sans" style={{ width: 'auto' }} value={cfg.quietStart ?? ''} onChange={(e) => savePref({ quietStart: e.target.value === '' ? null : parseInt(e.target.value, 10) })}>
+                  <option value="">off</option>
+                  {Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
+                </select>
+                <span style={{ color: 'var(--muted)', fontSize: 12 }}>a</span>
+                <select className="inp sans" style={{ width: 'auto' }} value={cfg.quietEnd ?? ''} onChange={(e) => savePref({ quietEnd: e.target.value === '' ? null : parseInt(e.target.value, 10) })}>
+                  <option value="">off</option>
+                  {Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
+                </select>
+              </div>
+            </div>
+            <label className="field">
+              <span className="field-label">Chat para críticas (enrutamiento por severidad — opcional)</span>
+              <input className="inp" value={cfg.criticalChatId} onChange={(e) => setCfg((p) => ({ ...p, criticalChatId: e.target.value }))} onBlur={() => savePref({ criticalChatId: cfg.criticalChatId })} placeholder="chat id aparte para 🔴 críticas (vacío = mismo chat)" />
+            </label>
           </div>
         </div>
 

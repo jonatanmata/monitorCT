@@ -64,12 +64,13 @@ export function NodeDrawer({ node, live, onChanged, onDeleted, onClose, onHelp }
   });
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; detail: string }> | null>(null);
   const [testing, setTesting] = useState(false);
+  const [watched, setWatchedState] = useState(node.watched);
   const [available, setAvailable] = useState<string[]>([]);
   const [cable, setCable] = useState<{ supported: boolean; note?: string; results?: CableIface[] } | null>(null);
   const [cableTesting, setCableTesting] = useState(false);
 
   useEffect(() => {
-    setTab('config'); setTestResult(null); setCable(null);
+    setTab('config'); setTestResult(null); setCable(null); setWatchedState(node.watched);
     setForm({
       name: node.name, ip: node.ip, type: node.type, routerosUser: '', routerosPass: '',
       snmpCommunity: node.snmpCommunity, probeTargets: node.probeTargets.join(', '), probeSrcAddresses: node.probeSrcAddresses.join(', '),
@@ -176,6 +177,23 @@ export function NodeDrawer({ node, live, onChanged, onDeleted, onClose, onHelp }
               )}
               <button className="btn" style={{ width: 40, color: 'var(--muted)' }} onClick={() => onHelp('conntest')}>!</button>
             </div>
+            {!isMonitor && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: 'var(--panel2)', border: '1px solid var(--border)', borderRadius: 10, padding: '11px 13px' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon path="M22 4L2 11l6 2 2 6 3-4 5 4z" size={14} stroke={watched ? 'var(--accent)' : 'var(--muted)'} strokeWidth={2} />
+                    Vigilar en Telegram
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Sus alertas siempre notifican (ignora severidad mínima y horario silencioso). Ideal para un cliente VIP o un router clave.</div>
+                </div>
+                <button
+                  className="toggle" style={{ background: watched ? 'var(--accent)' : 'var(--border2)' }}
+                  onClick={() => { const next = !watched; setWatchedState(next); void api.watchNode(node.id, next).then(onChanged); }}
+                >
+                  <span className="knob" style={{ left: watched ? 20 : 2 }} />
+                </button>
+              </div>
+            )}
             {!isMonitor && (
               <button className="btn danger" onClick={() => { if (confirm(`¿Eliminar ${node.name}? Se borran también sus métricas.`)) void api.deleteNode(node.id).then(onDeleted).catch((e) => alert(String(e))); }}>Eliminar equipo</button>
             )}
