@@ -3,7 +3,7 @@ import { db, getSetting, setSetting, NODE_TYPES, focusStart, setFocusStart, clea
 import { encryptJson, decryptJson } from '../db/crypto.js';
 import { allLiveNodes, dropLiveNode } from '../state.js';
 import { pingHost } from '../pollers/ping.js';
-import { testConnection as testMikrotik, runCableTestAll } from '../pollers/mikrotik.js';
+import { testConnection as testMikrotik, runCableTestAll, getRouterosFlow, auditMikrotik } from '../pollers/mikrotik.js';
 import { testSnmp } from '../pollers/snmp.js';
 import { lossMatrix, hourlyCorrelation } from '../pollers/probes.js';
 import { getThresholds } from '../alerts/engine.js';
@@ -265,6 +265,45 @@ export function registerApiRoutes(app: FastifyInstance): void {
     try {
       const results = await runCableTestAll(node.ip, creds, b.interface);
       return { supported: true, results };
+    } catch (err) {
+      return { supported: false, note: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // Flujo RouterOS (para la vista del drawer): datos en vivo por API.
+  app.post('/api/nodes/:id/routeros-flow', async (req, reply) => {
+    const id = parseInt((req.params as { id: string }).id, 10);
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(id) as NodeRow | undefined;
+    if (!node) return reply.code(404).send({ error: 'Nodo no encontrado' });
+    if (node.type !== 'mikrotik' && node.type !== 'router') {
+      return { supported: false, note: 'El flujo RouterOS solo está disponible en equipos MikroTik.' };
+    }
+    if (node.type === 'router') {
+      return { supported: false, note: 'Router genérico: el flujo detallado requiere un MikroTik con API RouterOS.' };
+    }
+    if (!node.ip) return { supported: false, note: 'El equipo no tiene IP configurada.' };
+    const creds = decryptJson<Credentials>(node.credentials_enc, {});
+    if (!creds.routerosUser) return { supported: false, note: 'Configura el usuario/clave API RouterOS del equipo para leer el flujo.' };
+    try {
+      const flow = await getRouterosFlow(node.ip, creds);
+      return { supported: true, ...flow };
+    } catch (err) {
+      return reply.code(200).send({ supported: false, note: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Auditoría de configuración MikroTik (solo lectura).
+  app.post('/api/nodes/:id/audit', async (req, reply) => {
+    const id = parseInt((req.params as { id: string }).id, 10);
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(id) as NodeRow | undefined;
+    if (!node) return reply.code(404).send({ error: 'Nodo no encontrado' });
+    if (node.type !== 'mikrotik') return { supported: false, note: 'La auditoría de configuración requiere un equipo MikroTik.' };
+    if (!node.ip) return { supported: false, note: 'El equipo no tiene IP configurada.' };
+    const creds = decryptJson<Credentials>(node.credentials_enc, {});
+    if (!creds.routerosUser) return { supported: false, note: 'Configura el usuario/clave API RouterOS del equipo para auditarlo.' };
+    try {
+      const result = await auditMikrotik(node.ip, creds);
+      return { supported: true, ...result };
     } catch (err) {
       return { supported: false, note: err instanceof Error ? err.message : String(err) };
     }

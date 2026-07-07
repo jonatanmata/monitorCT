@@ -1,6 +1,6 @@
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import type { ApiNode, LiveNode } from '../types';
-import { NODE_TYPE_ICONS } from '../types';
+import { Icon, ICONS, TYPE_META } from '../ui/meta';
 
 export type DeviceNodeData = {
   node: ApiNode;
@@ -9,52 +9,58 @@ export type DeviceNodeData = {
 
 export type DeviceFlowNode = Node<DeviceNodeData, 'device'>;
 
-const SUMMARY_LABELS: Record<string, { label: string; unit: string }> = {
-  cpu_pct: { label: 'CPU', unit: '%' },
-  signal_dbm: { label: 'Señal', unit: ' dBm' },
-  ccq_pct: { label: 'CCQ', unit: '%' },
-  snr_db: { label: 'SNR', unit: ' dB' },
-  stations: { label: 'Estac.', unit: '' },
+const STATUS_COLOR: Record<string, string> = {
+  up: 'var(--up)', warning: 'var(--warn)', down: 'var(--down)', unknown: 'var(--muted)',
+};
+
+const SUMMARY_META: Record<string, { k: string; unit: string }> = {
+  cpu_pct: { k: 'cpu', unit: '%' },
+  signal_dbm: { k: 'sig', unit: '' },
+  ccq_pct: { k: 'ccq', unit: '%' },
+  snr_db: { k: 'snr', unit: '' },
+  stations: { k: 'sta', unit: '' },
 };
 
 export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
   const { node, live } = data;
   const isMonitor = node.type === 'monitor';
   const status = isMonitor ? 'up' : live?.status ?? 'unknown';
-  const chips: string[] = [];
-  if (isMonitor) {
-    return (
-      <div className={`device-node monitor-node status-up ${selected ? 'selected' : ''}`}>
-        <div className="dn-header">
-          <span className="dn-icon">{NODE_TYPE_ICONS.monitor}</span>
-          <span className="dn-title">{node.name}</span>
-          <span className="dn-dot up" />
-        </div>
-        <div className="dn-ip">Raíz de la red · sondas del PC</div>
-        <Handle type="source" position={Position.Right} />
-      </div>
-    );
-  }
-  if (live?.latencyMs != null) chips.push(`${live.latencyMs.toFixed(0)} ms`);
-  if (live?.lossPct != null && live.lossPct > 0) chips.push(`pérd ${live.lossPct}%`);
-  for (const [key, { label, unit }] of Object.entries(SUMMARY_LABELS)) {
-    const v = live?.summary?.[key];
-    if (v !== undefined) chips.push(`${label} ${v}${unit}`);
+  const meta = TYPE_META[node.type];
+  const color = STATUS_COLOR[status];
+
+  const metrics: { k: string; v: string }[] = [];
+  if (!isMonitor) {
+    if (live?.latencyMs != null) metrics.push({ k: 'lat', v: `${live.latencyMs.toFixed(0)}ms` });
+    if (live?.lossPct != null && live.lossPct > 0) metrics.push({ k: 'pérd', v: `${live.lossPct}%` });
+    for (const [key, { k, unit }] of Object.entries(SUMMARY_META)) {
+      const v = live?.summary?.[key];
+      if (v !== undefined && metrics.length < 3) metrics.push({ k, v: `${v}${unit}` });
+    }
   }
 
   return (
-    <div className={`device-node status-${status} ${selected ? 'selected' : ''}`}>
-      <Handle type="target" position={Position.Left} />
-      <div className="dn-header">
-        <span className="dn-icon">{NODE_TYPE_ICONS[node.type]}</span>
-        <span className="dn-title">{node.name}</span>
-        <span className={`dn-dot ${status}`} />
+    <div className={`node-card ${selected ? 'selected' : ''}`}>
+      {status !== 'unknown' && (
+        <div
+          className="node-ring"
+          style={{ boxShadow: `0 0 0 1.5px ${color}`, opacity: status === 'down' ? 0.9 : 0.55 }}
+        />
+      )}
+      {!isMonitor && <Handle type="target" position={Position.Left} />}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="node-ico" style={{ color: meta.color }}>
+          <Icon path={ICONS[meta.icon]} size={17} strokeWidth={1.85} />
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div className="node-name">{node.name}</div>
+          <div className="node-ip">{isMonitor ? 'raíz de la red' : node.ip || 'sin IP'}</div>
+        </div>
+        <span className="node-dot" style={{ background: color, animation: status === 'down' ? 'blink 1.4s infinite' : undefined }} />
       </div>
-      {node.ip && <div className="dn-ip">{node.ip}</div>}
-      {chips.length > 0 && (
-        <div className="dn-stats">
-          {chips.map((s, i) => (
-            <span key={i} className="dn-chip">{s}</span>
+      {metrics.length > 0 && (
+        <div className="node-metrics">
+          {metrics.map((m, i) => (
+            <span key={i} className="node-metric"><b>{m.k}</b>{m.v}</span>
           ))}
         </div>
       )}

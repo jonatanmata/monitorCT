@@ -9,18 +9,20 @@ export type FlowEdgeData = {
 };
 
 const COLOR: Record<string, string> = {
-  up: '#10b981',
-  warning: '#f59e0b',
-  down: '#f43f5e',
-  unknown: '#5d6980',
+  up: 'var(--up)',
+  warning: 'var(--warn)',
+  down: 'var(--down)',
+  unknown: 'var(--muted)',
 };
 
 /**
- * Arista con efecto de flujo: una línea base coloreada por la salud del enlace
- * más un punto animado que viaja del origen al destino, mostrando la dirección
- * del tráfico. En estado "down" el flujo se detiene.
+ * Arista con efecto de flujo estilo diseño v2: una línea base tenue coloreada por
+ * la salud del enlace más una línea punteada animada (dashflow) que muestra la
+ * dirección del tráfico. En estado "down" el flujo se detiene.
  */
-export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected }: EdgeProps) {
+export function FlowEdge({
+  id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected,
+}: EdgeProps) {
   const [path, labelX, labelY] = getBezierPath({
     sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
   });
@@ -31,36 +33,50 @@ export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePositio
 
   return (
     <>
+      {/* base tenue */}
       <BaseEdge
         id={id}
         path={path}
+        style={{ stroke: color, strokeWidth: selected ? 3.5 : 3, opacity: 0.5 }}
+      />
+      {/* flujo animado */}
+      <path
+        d={path}
+        fill="none"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeDasharray="7 9"
         style={{
-          stroke: color,
-          strokeWidth: selected ? 3.5 : 2.2,
-          opacity: health === 'unknown' ? 0.5 : 0.9,
+          animation: flowing ? 'dashflow 0.9s linear infinite' : undefined,
+          opacity: 0.95,
           filter: selected ? `drop-shadow(0 0 6px ${color})` : undefined,
-          transition: 'stroke 0.3s',
         }}
       />
-      {flowing && (
-        <circle r={3.4} fill={color} opacity={0.95}>
-          <animateMotion dur={health === 'warning' ? '2.6s' : '1.8s'} repeatCount="indefinite" path={path} />
-        </circle>
-      )}
       <EdgeLabelRenderer>
         {d.label && (
           <div
-            className="edge-label"
-            style={{ transform: `translate(-50%, calc(-50% - 14px)) translate(${labelX}px, ${labelY}px)` }}
+            className="mono"
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, calc(-50% - 15px)) translate(${labelX}px, ${labelY}px)`,
+              background: 'var(--panel)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              padding: '1px 7px',
+              fontSize: 10,
+              color: 'var(--text2)',
+              pointerEvents: 'none',
+            }}
           >
             {d.label}
           </div>
         )}
         {d.onInsert && (
           <button
-            className="edge-insert-btn"
+            className="edge-plus"
             title="Insertar un equipo aquí (romper el hilo)"
-            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+            style={{ position: 'absolute', transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
             onClick={(e) => {
               e.stopPropagation();
               d.onInsert!(id, e.clientX, e.clientY);

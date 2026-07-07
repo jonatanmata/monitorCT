@@ -109,6 +109,7 @@ El nodo de tipo "monitor" (💻 PC de monitoreo) es la raíz del grafo: es el pr
   - Nunca concluyas "el enlace está bien" solo porque el ping del router no pierde.
   - Usa get_loss_matrix para comparar orígenes, y ping_now con srcAddress (IP LAN) desde los MikroTik para simular tráfico de cliente.
   - Usa correlate_saturation y las métricas utilization_pct / queue_drops / tx_drops para confirmar saturación en horas pico.
+  - Sospechoso #1 de configuración: FastTrack. Las conexiones fast-tracked SALTAN las colas y el mangle, así que ni se moldean ni cuentan para la utilización — la saturación se vuelve invisible. Usa audit_mikrotik_config para revisar FastTrack, ausencia de QoS, MSS clamp con MTU/PPPoE reducida, conntrack lleno, CPU y dúplex. Si un MikroTik reenvía con pérdida pero su ping sale limpio, audítalo antes de culpar RF.
 
 ## Diagnóstico físico de cable (descartar antes de culpar RF o saturación)
 Muchos problemas "raros" son de capa física (cable UTP, conector RJ45, PoE). Antes de concluir que es RF o saturación, DESCARTA el cable:

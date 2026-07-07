@@ -32,6 +32,23 @@ export const api = {
       results?: { name: string; supported: boolean; status?: string; note?: string; pairs?: { pair: string; status: string; distanceM: number | null }[] }[];
     }>(`/api/nodes/${id}/cable-test`, { method: 'POST', body: JSON.stringify(iface ? { interface: iface } : {}) }),
 
+  routerosFlow: (id: number) =>
+    http<{
+      supported: boolean;
+      note?: string;
+      wanDownMbps: number; wanUpMbps: number; connections: number; cpu: number;
+      firewallDrops: number; mangleRules: number; dstnatRules: number; filterRules: number;
+      queues: { name: string; usedMbps: number; limitMbps: number | null; down: boolean }[];
+    }>(`/api/nodes/${id}/routeros-flow`, { method: 'POST' }),
+
+  audit: (id: number) =>
+    http<{
+      supported: boolean;
+      note?: string;
+      facts?: { board: string; version: string; cpuPct: number; memPct: number; uptime: string };
+      findings?: { severity: 'critical' | 'warning' | 'info' | 'ok'; area: string; title: string; detail: string; recommendation?: string }[];
+    }>(`/api/nodes/${id}/audit`, { method: 'POST' }),
+
   createEdge: (body: { sourceId: number; targetId: number; label?: string; capacityMbps?: number; sourceInterface?: string }) =>
     http<ApiEdge>('/api/edges', { method: 'POST', body: JSON.stringify(body) }),
 

@@ -7,3 +7,6 @@ data/
 *.sqlite-journal
 *.db
 .DS_Store
+
+# TypeScript incremental build info
+*.tsbuildinfo

@@ -3,7 +3,7 @@ import { db, withFocus, type NodeRow, type EdgeRow } from '../db/index.js';
 import { allLiveNodes } from '../state.js';
 import { nodeCredentials } from '../pollers/collector.js';
 import { pingHost } from '../pollers/ping.js';
-import { pingFromMikrotik, getSystemInfo, getInterfaceStats, getQueueDrops, getEthernetStatus, runCableTestAll } from '../pollers/mikrotik.js';
+import { pingFromMikrotik, getSystemInfo, getInterfaceStats, getQueueDrops, getEthernetStatus, runCableTestAll, auditMikrotik } from '../pollers/mikrotik.js';
 import { pollUbiquiti, pollMimosa, pollLinkHealth } from '../pollers/snmp.js';
 import { lossMatrix, hourlyCorrelation } from '../pollers/probes.js';
 
@@ -109,6 +109,17 @@ export const toolDefinitions: Anthropic.Tool[] = [
         nodeId: { type: 'number' },
         interface: { type: 'string', description: 'Nombre del puerto ethernet; omitir para probar todos' },
       },
+      required: ['nodeId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'audit_mikrotik_config',
+    description:
+      'Auditoría de configuración RouterOS (SOLO LECTURA) enfocada en la pérdida por saturación. Revisa lo que puede esconder o causar la pérdida hacia internet: FastTrack activo (las conexiones fast-tracked saltan colas y mangle, por eso el router "no pierde" pero los clientes sí), ausencia de QoS, falta de MSS clamp con MTU/PPPoE reducida, tabla de conntrack casi llena, CPU alta y puertos en half-duplex o velocidad degradada. Devuelve hallazgos con severidad y recomendación. Úsalo cuando investigues por qué un MikroTik reenvía con pérdida.',
+    input_schema: {
+      type: 'object',
+      properties: { nodeId: { type: 'number' } },
       required: ['nodeId'],
       additionalProperties: false,
     },
@@ -256,6 +267,20 @@ async function execRunCableTest(input: { nodeId: number; interface?: string }): 
   }
 }
 
+async function execAuditMikrotik(input: { nodeId: number }): Promise<unknown> {
+  const node = getNode(input.nodeId);
+  if (!node) return { error: 'Nodo no encontrado' };
+  if (node.type !== 'mikrotik') return { supported: false, note: 'La auditoría de configuración requiere un MikroTik.' };
+  if (!node.ip) return { supported: false, note: 'El nodo no tiene IP' };
+  const creds = nodeCredentials(node);
+  if (!creds.routerosUser) return { supported: false, note: 'Sin credenciales API RouterOS para este nodo' };
+  try {
+    return { supported: true, ...(await auditMikrotik(node.ip, creds)) };
+  } catch (err) {
+    return { supported: false, note: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function executeTool(name: string, input: unknown): Promise<string> {
   const i = (input ?? {}) as never;
   try {
@@ -270,6 +295,7 @@ export async function executeTool(name: string, input: unknown): Promise<string>
       case 'get_recent_alerts': result = await execGetRecentAlerts(i); break;
       case 'get_link_health': result = await execGetLinkHealth(i); break;
       case 'run_cable_test': result = await execRunCableTest(i); break;
+      case 'audit_mikrotik_config': result = await execAuditMikrotik(i); break;
       default: return JSON.stringify({ error: `Herramienta desconocida: ${name}` });
     }
     return JSON.stringify(result);
