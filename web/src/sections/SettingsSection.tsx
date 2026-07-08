@@ -190,10 +190,10 @@ export function SettingsSection({ onAiChanged, focusStart, onFocusChanged, alarm
         {/* mapa */}
         <div className="card">
           <h3>Mapa geográfico</h3>
-          <p className="card-sub">El modo Mapa usa MapTiler (gratis). Crea una cuenta, copia tu API key y pégala aquí. <a href="https://cloud.maptiler.com/account/keys/" target="_blank" rel="noreferrer">Obtener API key</a>.</p>
+          <p className="card-sub">Acepta una <b>API key de MapTiler</b> (gratis, <a href="https://cloud.maptiler.com/account/keys/" target="_blank" rel="noreferrer">obtenerla</a>) o un <b>token de Mapbox</b> (empieza por <code>pk.</code>). Se detecta el proveedor automáticamente.</p>
           <label className="field" style={{ marginBottom: 12 }}>
-            <span className="field-label">MapTiler API key</span>
-            <input className="inp" value={maptilerKey} onChange={(e) => setMaptilerKey(e.target.value)} placeholder="pega tu key de MapTiler" />
+            <span className="field-label">API key (MapTiler o Mapbox)</span>
+            <input className="inp" value={maptilerKey} onChange={(e) => setMaptilerKey(e.target.value)} placeholder="key de MapTiler o token pk.… de Mapbox" />
           </label>
           <label className="field">
             <span className="field-label">Estilo del mapa</span>

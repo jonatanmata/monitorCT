@@ -29,9 +29,24 @@ function computeEffCoords(nodes: ApiNode[]): Map<number, { lat: number; lng: num
 
 const HEALTH_HEX: Record<string, string> = { up: '#33cc7a', warning: '#f5b13d', down: '#f0556b', unknown: '#6b788f' };
 
-const STYLE_MAP: Record<string, string> = { dark: 'dataviz-dark', satellite: 'hybrid', streets: 'streets-v2' };
-function styleUrl(key: string, style: string): string {
-  return `https://api.maptiler.com/maps/${STYLE_MAP[style] ?? 'dataviz-dark'}/style.json?key=${encodeURIComponent(key)}`;
+/**
+ * Devuelve el estilo para MapLibre según el proveedor detectado por la key:
+ * - Mapbox (token que empieza por 'pk.'/'sk.'): tiles raster de la API de estilos de Mapbox.
+ * - MapTiler (el resto): style.json vectorial nativo de MapLibre.
+ * MapLibre acepta tanto una URL (string) como un objeto de estilo.
+ */
+function buildStyle(key: string, style: string): string | maplibregl.StyleSpecification {
+  const isMapbox = /^(pk|sk)\./.test(key.trim());
+  if (isMapbox) {
+    const id = ({ dark: 'dark-v11', satellite: 'satellite-streets-v12', streets: 'streets-v12' } as Record<string, string>)[style] ?? 'dark-v11';
+    return {
+      version: 8,
+      sources: { base: { type: 'raster', tiles: [`https://api.mapbox.com/styles/v1/mapbox/${id}/tiles/512/{z}/{x}/{y}@2x?access_token=${encodeURIComponent(key)}`], tileSize: 512, attribution: '© Mapbox © OpenStreetMap' } },
+      layers: [{ id: 'base', type: 'raster', source: 'base' }],
+    };
+  }
+  const id = ({ dark: 'dataviz-dark', satellite: 'hybrid', streets: 'streets-v2' } as Record<string, string>)[style] ?? 'dataviz-dark';
+  return `https://api.maptiler.com/maps/${id}/style.json?key=${encodeURIComponent(key)}`;
 }
 
 interface Props {
@@ -99,7 +114,7 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
       : [-74.5, 4.6]; // Colombia por defecto
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: styleUrl(maptilerKey, mapStyle),
+      style: buildStyle(maptilerKey, mapStyle),
       center,
       zoom: placed.length ? 12 : 6,
       attributionControl: false,
@@ -229,8 +244,8 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
       <div className="section-scroll">
         <div className="card" style={{ maxWidth: 560, margin: '40px auto' }}>
           <h3>Configura el mapa</h3>
-          <p className="card-sub">El modo mapa usa MapTiler (gratis). Crea una cuenta, copia tu <b>API key</b> y pégala en <b>Ajustes → Mapa</b>.</p>
-          <a className="btn primary" href="https://cloud.maptiler.com/account/keys/" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>Obtener API key gratis</a>
+          <p className="card-sub">El modo mapa acepta una <b>API key de MapTiler</b> (gratis, recomendado) o un <b>token de Mapbox</b> (empieza por <code>pk.</code>). Pégala en <b>Ajustes → Mapa</b>.</p>
+          <a className="btn primary" href="https://cloud.maptiler.com/account/keys/" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>Obtener API key de MapTiler</a>
         </div>
       </div>
     );
