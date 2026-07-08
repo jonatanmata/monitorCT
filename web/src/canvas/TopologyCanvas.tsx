@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow, Background, BackgroundVariant, Controls, MiniMap,
   type Node as FlowNode, type Edge as FlowEdge, type Connection, type NodeChange,
@@ -45,6 +45,10 @@ export function TopologyCanvas({
 }: Props) {
   const [connecting, setConnecting] = useState(false);
   const [insertMenu, setInsertMenu] = useState<{ edgeId: number; x: number; y: number } | null>(null);
+  // Dimensiones medidas por React Flow. Como controlamos `nodes` nosotros, hay que
+  // reinyectar `measured` en cada nodo o el MINIMAPA no dibuja nada (usa node.measured).
+  const [dimsTick, setDimsTick] = useState(0);
+  const dimsRef = useRef(new Map<string, { width: number; height: number }>());
 
   const openInsertMenu = useCallback((edgeId: string, x: number, y: number) => {
     setInsertMenu({ edgeId: parseInt(edgeId, 10), x, y });
@@ -89,20 +93,21 @@ export function TopologyCanvas({
           .map((m) => ({ node: m, live: live[m.id] ?? null }));
         out.push({
           id: String(n.id), type: 'group', position: { x: n.posX, y: n.posY },
-          selected: n.id === selectedNodeId, deletable: true,
-          data: { container: n, members, worst: worstByContainer.get(n.id) ?? 'unknown', onOpen: (id) => (onOpenContainer ? onOpenContainer(id) : onSelectNode(id)) },
+          selected: n.id === selectedNodeId, deletable: true, measured: dimsRef.current.get(String(n.id)),
+          data: { container: n, members, worst: worstByContainer.get(n.id) ?? 'unknown', onOpen: (id) => (onOpenContainer ? onOpenContainer(id) : onSelectNode(id)), onSelectMember: (id) => onSelectNode(id) },
         });
       } else if (!containerOf.has(n.id)) {
         // Nodo suelto (los miembros de un contenedor se dibujan dentro de la tarjeta).
         out.push({
           id: String(n.id), type: 'device', position: { x: n.posX, y: n.posY },
-          selected: n.id === selectedNodeId, deletable: n.type !== 'monitor',
+          selected: n.id === selectedNodeId, deletable: n.type !== 'monitor', measured: dimsRef.current.get(String(n.id)),
           data: { node: n, live: live[n.id] ?? null },
         });
       }
     }
     return out;
-  }, [nodes, live, selectedNodeId, containerOf, worstByContainer, onOpenContainer, onSelectNode]);
+    // dimsTick fuerza recompute cuando llegan las dimensiones medidas (para el minimapa).
+  }, [nodes, live, selectedNodeId, containerOf, worstByContainer, onOpenContainer, onSelectNode, dimsTick]);
 
   const flowEdges: FlowEdge[] = useMemo(() => {
     // Extremo dibujado: si el nodo está en un contenedor, el enlace va a la tarjeta del contenedor.
@@ -150,22 +155,40 @@ export function TopologyCanvas({
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
+      let dimsChanged = false;
       for (const ch of changes) {
         if (ch.type === 'position' && !ch.dragging && ch.position) {
           void api
             .updateNode(parseInt(ch.id, 10), { posX: ch.position.x, posY: ch.position.y })
             .then(onTopologyChanged);
+        } else if (ch.type === 'dimensions' && ch.dimensions) {
+          // Guardar el tamaño medido para reinyectarlo (necesario para el minimapa).
+          const prev = dimsRef.current.get(ch.id);
+          if (!prev || prev.width !== ch.dimensions.width || prev.height !== ch.dimensions.height) {
+            dimsRef.current.set(ch.id, { width: ch.dimensions.width, height: ch.dimensions.height });
+            dimsChanged = true;
+          }
         }
       }
+      if (dimsChanged) setDimsTick((t) => t + 1);
     },
     [onTopologyChanged],
   );
 
   const onConnect = useCallback(
     (conn: Connection) => {
-      if (!conn.source || !conn.target || conn.source === conn.target) return;
+      if (!conn.source || !conn.target) return;
+      // Un handle "m-<id>" en una tarjeta de grupo apunta a un equipo interno concreto
+      // (la antena, no el contenedor). Sin handle → el nodo/contenedor como un todo.
+      const resolve = (nodeId: string, handleId: string | null | undefined): number => {
+        const m = handleId && /^m-(\d+)$/.exec(handleId);
+        return m ? parseInt(m[1], 10) : parseInt(nodeId, 10);
+      };
+      const sourceId = resolve(conn.source, conn.sourceHandle);
+      const targetId = resolve(conn.target, conn.targetHandle);
+      if (!sourceId || !targetId || sourceId === targetId) return;
       void api
-        .createEdge({ sourceId: parseInt(conn.source, 10), targetId: parseInt(conn.target, 10) })
+        .createEdge({ sourceId, targetId })
         .then((e) => {
           onTopologyChanged();
           onSelectEdge(e.id);
