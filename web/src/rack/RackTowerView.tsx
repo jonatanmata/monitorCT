@@ -46,8 +46,16 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
   const [linkFrom, setLinkFrom] = useState<{ nodeId: number; portId: string } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const focusedRef = useRef<number | null>(null);
+  // true mientras/justo después de un arrastre real, para no abrir el drawer al soltar.
+  const draggedRef = useRef(false);
 
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+
+  // Selecciona un equipo SOLO si el gesto fue un clic (no un arrastre).
+  const clickSelect = useCallback((id: number) => {
+    if (draggedRef.current) { draggedRef.current = false; return; }
+    onSelectNode(id);
+  }, [onSelectNode]);
 
   // --- disposición: posiciones por defecto si no hay meta.phys ---
   const phys = useCallback((n: ApiNode, def: { x: number; y: number }) => {
@@ -186,10 +194,12 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
   // --- arrastre genérico de objetos (rack/torre/egreso) para fijar meta.phys ---
   const dragObject = useCallback((n: ApiNode, def: { x: number; y: number }, e: React.PointerEvent) => {
     e.stopPropagation();
+    draggedRef.current = false;
     const start = phys(n, def);
     const sx = e.clientX, sy = e.clientY;
-    let last = start;
+    let last = start, moved = false;
     const move = (ev: PointerEvent) => {
+      if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 4) { moved = true; draggedRef.current = true; }
       last = { x: Math.round(start.x + (ev.clientX - sx) / zoom), y: Math.round(start.y + (ev.clientY - sy) / zoom) };
       // feedback inmediato: mutar el DOM del objeto arrastrado
       const el = document.querySelector(`[data-obj="${n.id}"]`) as HTMLElement | null;
@@ -197,7 +207,7 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
     };
     const up = () => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
-      patchMeta(n, { phys: last });
+      if (moved) patchMeta(n, { phys: last }); // solo persistir si de verdad se movió
     };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   }, [zoom, phys, patchMeta]);
@@ -205,21 +215,28 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
   // --- arrastre de radio: cambia la altura (mountF) sobre la torre ---
   const dragRadio = useCallback((r: ApiNode, tw: (typeof model.towerViews)[number], e: React.PointerEvent) => {
     e.stopPropagation();
+    draggedRef.current = false;
     const span = tw.baseY - tw.apexY;
     const f0 = metaOf(r).mountF ?? 0.6;
     const sy = e.clientY;
-    let f = f0;
-    const move = (ev: PointerEvent) => { f = Math.max(0.06, Math.min(0.95, f0 - (ev.clientY - sy) / zoom / span)); };
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); patchMeta(r, { mountF: Math.round(f * 100) / 100 }); };
+    let f = f0, moved = false;
+    const move = (ev: PointerEvent) => {
+      if (Math.abs(ev.clientY - sy) > 4) { moved = true; draggedRef.current = true; }
+      f = Math.max(0.06, Math.min(0.95, f0 - (ev.clientY - sy) / zoom / span));
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); if (moved) patchMeta(r, { mountF: Math.round(f * 100) / 100 }); };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   }, [zoom, patchMeta]);
 
   // --- reordenar equipos en un rack (arrastre vertical → swap de slots) ---
   const dragDevice = useCallback((rackId: number, devId: number, e: React.PointerEvent) => {
     e.stopPropagation();
+    draggedRef.current = false;
     let order = membersOf(rackId).map((d) => d.id);
-    let base = e.clientY;
+    const startY = e.clientY;
+    let base = e.clientY, moved = false;
     const move = (ev: PointerEvent) => {
+      if (Math.abs(ev.clientY - startY) > 4) { moved = true; draggedRef.current = true; }
       const dy = ev.clientY - base;
       if (Math.abs(dy) < 24 * zoom) return;
       const i = order.indexOf(devId), j = i + (dy > 0 ? 1 : -1);
@@ -229,6 +246,7 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
     };
     const up = () => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      if (!moved) return; // fue un clic, no un reordenamiento
       // persistir el nuevo orden (slot = índice) para los que cambiaron
       order.forEach((id, idx) => { const nd = byId.get(id); if (nd && metaOf(nd).slot !== idx) void api.updateNode(id, { meta: { ...metaOf(nd), slot: idx } }); });
       onChanged();
@@ -327,7 +345,7 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
                 <div className="rt-rack-frame" style={{ left: rk.x - 10, top: rk.y - 2, width: G.rackW + 20, height: rk.h, borderColor: selRack ? 'var(--accent)' : '#2a3550', boxShadow: selRack ? '0 0 0 3px var(--accentSoft),0 10px 30px rgba(0,0,0,.5)' : '0 10px 30px rgba(0,0,0,.5)' }} />
                 <div data-obj={rk.node.id} className="rt-rack-head" style={{ left: rk.x - 10, top: rk.y - 2, width: G.rackW + 20 }}
                   onPointerDown={(e) => dragObject(rk.node, { x: rk.x, y: rk.y }, e)}
-                  onClick={(e) => { e.stopPropagation(); setSel({ kind: 'rack', id: rk.node.id }); onSelectNode(rk.node.id); }}>
+                  onClick={(e) => { e.stopPropagation(); setSel({ kind: 'rack', id: rk.node.id }); clickSelect(rk.node.id); }}>
                   <Icon path={ICONS.rack} size={13} strokeWidth={1.8} />
                   <span className="rt-rack-name" onDoubleClick={() => rename(rk.node)}>{rk.node.name}</span>
                   <span className="rt-count">{rk.devices.length}u</span>
@@ -340,7 +358,7 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
                   return (
                     <div key={d.node.id} data-obj={d.node.id} className="rt-device" style={{ left: rk.x, top: d.y, width: G.rackW, height: d.h, opacity: d.node.enabled ? 1 : 0.6 }}
                       onPointerDown={(e) => dragDevice(rk.node.id, d.node.id, e)}
-                      onClick={(e) => { e.stopPropagation(); onSelectNode(d.node.id); }}>
+                      onClick={(e) => { e.stopPropagation(); clickSelect(d.node.id); }}>
                       <span className="rt-bezel" style={{ background: d.node.enabled ? meta.color : '#2a3346', boxShadow: d.node.enabled ? `0 0 8px ${meta.color}66` : 'none' }} />
                       <span className="rt-dev-ico" style={{ color: meta.color }}><Icon path={ICONS[meta.icon]} size={13} strokeWidth={1.8} /></span>
                       <span className="rt-dev-name" onDoubleClick={(e) => { e.stopPropagation(); rename(d.node); }}>{d.node.name}</span>
@@ -361,10 +379,10 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
             const selT = sel?.kind === 'tower' && sel.id === t.node.id;
             return (
               <div key={t.node.id}>
-                <div className="rt-hit" style={{ left: t.x, top: t.y, width: G.towerW, height: G.towerH }} onClick={(e) => { e.stopPropagation(); setSel({ kind: 'tower', id: t.node.id }); onSelectNode(t.node.id); }} />
+                <div className="rt-hit" style={{ left: t.x, top: t.y, width: G.towerW, height: G.towerH }} onClick={(e) => { e.stopPropagation(); setSel({ kind: 'tower', id: t.node.id }); clickSelect(t.node.id); }} />
                 <div data-obj={t.node.id} className="rt-tower-head" style={{ left: t.x - 4, top: t.y - 24, borderColor: selT ? 'var(--accent)' : '#2a3550', background: selT ? 'var(--accentSoft)' : 'rgba(255,255,255,.04)' }}
                   onPointerDown={(e) => dragObject(t.node, { x: t.x, y: t.y }, e)}
-                  onClick={(e) => { e.stopPropagation(); setSel({ kind: 'tower', id: t.node.id }); onSelectNode(t.node.id); }}>
+                  onClick={(e) => { e.stopPropagation(); setSel({ kind: 'tower', id: t.node.id }); clickSelect(t.node.id); }}>
                   <Icon path={ICONS.torre} size={12} strokeWidth={1.8} />
                   <span className="rt-rack-name" onDoubleClick={() => rename(t.node)}>{t.node.name}</span>
                   <span className="rt-count">{t.radios.length}</span>
@@ -378,7 +396,7 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
                       <div className="rt-mount" style={{ left: t.cx, top: r.y + 18, width: r.x - t.cx }} />
                       <div data-obj={r.node.id} className="rt-radio" style={{ left: r.x, top: r.y, borderColor: r.node.enabled ? `${meta.color}66` : '#222b3d', opacity: r.node.enabled ? 1 : 0.65 }}
                         onPointerDown={(e) => dragRadio(r.node, t, e)}
-                        onClick={(e) => { e.stopPropagation(); onSelectNode(r.node.id); }}>
+                        onClick={(e) => { e.stopPropagation(); clickSelect(r.node.id); }}>
                         <span className="rt-radio-ico" style={{ color: r.node.enabled ? meta.color : '#556' }}><Icon path={ICONS[meta.icon]} size={14} strokeWidth={1.7} /></span>
                         <div style={{ minWidth: 0 }}>
                           <div className="rt-radio-name" onDoubleClick={(e) => { e.stopPropagation(); rename(r.node); }}>{r.node.name}</div>
@@ -402,7 +420,7 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
             return (
               <div key={e.node.id} data-obj={e.node.id} className="rt-egress" style={{ left: e.x, top: e.y, width: G.egW, height: G.egH }}
                 onPointerDown={(ev) => dragObject(e.node, { x: e.x, y: e.y }, ev)}
-                onClick={(ev) => { ev.stopPropagation(); onSelectNode(e.node.id); }}>
+                onClick={(ev) => { ev.stopPropagation(); clickSelect(e.node.id); }}>
                 <span className="rt-eg-ico" style={{ color: meta.color }}><Icon path={ICONS[meta.icon]} size={16} strokeWidth={1.8} /></span>
                 <div style={{ minWidth: 0 }}>
                   <div className="rt-eg-name">{e.node.name}</div>
@@ -467,7 +485,7 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
           {/* etiquetas de cable (clic para borrar) */}
           {cables.map((c) => (
             <div key={c.edge.id} className="rt-cable-label" style={{ left: c.mx, top: c.my - 9, borderColor: c.color, outline: c.edge.id === selectedEdgeId ? '2px solid var(--accent)' : 'none' }}
-              title="Clic para eliminar el cable" onClick={(e) => { e.stopPropagation(); void api.deleteEdge(c.edge.id).then(onChanged); }}>{c.label}</div>
+              title="Clic para ver el enlace (borrarlo desde su panel)" onClick={(e) => { e.stopPropagation(); onSelectEdge(c.edge.id); }}>{c.label}</div>
           ))}
         </div>
 
