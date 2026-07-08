@@ -6,22 +6,20 @@ import { CONTAINER_TYPES } from '../types';
 import { ICONS, typeMeta } from '../ui/meta';
 import { api } from '../api';
 
-/** Coordenada efectiva: propia, o heredada del contenedor (con leve dispersión para no solaparse). */
+/**
+ * Coordenada efectiva: propia, o heredada del contenedor. Los miembros sin
+ * ubicación propia colapsan EXACTAMENTE al punto del contenedor (inherited:true)
+ * y se dibujan apilados verticalmente dentro de su torre/rack, no dispersos.
+ */
 function computeEffCoords(nodes: ApiNode[]): Map<number, { lat: number; lng: number; inherited: boolean }> {
   const out = new Map<number, { lat: number; lng: number; inherited: boolean }>();
   const containers = new Map<number, { lat: number; lng: number }>();
   for (const n of nodes) if (CONTAINER_TYPES.includes(n.type) && n.lat != null && n.lng != null) containers.set(n.id, { lat: n.lat, lng: n.lng });
-  const idxInContainer = new Map<number, number>();
   for (const n of nodes) {
     if (n.lat != null && n.lng != null) { out.set(n.id, { lat: n.lat, lng: n.lng, inherited: false }); continue; }
     if (n.containerId != null) {
       const c = containers.get(n.containerId);
-      if (c) {
-        const i = idxInContainer.get(n.containerId) ?? 0;
-        idxInContainer.set(n.containerId, i + 1);
-        const ang = i * 0.9, r = 0.0004 * (1 + Math.floor(i / 6));
-        out.set(n.id, { lat: c.lat + Math.sin(ang) * r, lng: c.lng + Math.cos(ang) * r, inherited: true });
-      }
+      if (c) out.set(n.id, { lat: c.lat, lng: c.lng, inherited: true });
     }
   }
   return out;
@@ -130,10 +128,49 @@ function paintMarker(el: HTMLElement, node: ApiNode, live: LiveNode | undefined,
   }
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+}
+
+/** Marcador compuesto de torre/rack: apila verticalmente sus equipos sobre la base geográfica. */
+function buildTowerEl(): HTMLDivElement {
+  const el = document.createElement('div');
+  el.className = 'geo-tower';
+  return el;
+}
+/** Ordena los miembros para el apilado (radios por altura de montaje; equipos por slot). */
+function orderMembers(members: ApiNode[]): ApiNode[] {
+  const meta = (n: ApiNode) => (n.meta ?? {}) as { mountF?: number; slot?: number };
+  return [...members].sort((a, b) => {
+    const ma = meta(a), mb = meta(b);
+    if (ma.mountF != null || mb.mountF != null) return (mb.mountF ?? 0) - (ma.mountF ?? 0); // más alto arriba
+    return (ma.slot ?? 999) - (mb.slot ?? 999);
+  });
+}
+function paintTower(el: HTMLElement, container: ApiNode, members: ApiNode[], live: Record<number, LiveNode>): void {
+  const cmeta = typeMeta(container.type);
+  let worst = 'unknown';
+  for (const m of members) { const s = m.type === 'monitor' ? 'up' : effStatus(m, live[m.id]); if ((STATUS_RANK[s] ?? 0) >= (STATUS_RANK[worst] ?? 0)) worst = s; }
+  const items = orderMembers(members).map((m) => {
+    const mm = typeMeta(m.type);
+    const st = m.type === 'monitor' ? 'up' : effStatus(m, live[m.id]);
+    const down = st === 'down' ? 'geo-tower-dot-down' : '';
+    return `<div class="geo-tower-item" data-mid="${m.id}"><span class="geo-tower-bar" style="background:${mm.color}"></span><span class="geo-tower-name">${escapeHtml(m.name)}</span><span class="geo-tower-dot ${down}" style="background:${HEALTH_HEX[st]}"></span></div>`;
+  }).join('');
+  el.innerHTML =
+    `<div class="geo-tower-stack">${items || '<div class="geo-tower-empty">torre vacía</div>'}</div>` +
+    `<div class="geo-tower-mast"></div>` +
+    `<div class="geo-tower-base" data-mid="" style="border-color:${HEALTH_HEX[worst]}">` +
+      `<span class="geo-tower-ico" style="color:${cmeta.color}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[cmeta.icon]}"/></svg></span>` +
+      `<span class="geo-tower-basename">${escapeHtml(container.name)}</span>` +
+      `<span class="geo-tower-dot" style="background:${HEALTH_HEX[worst]}"></span>` +
+    `</div>`;
+}
+
 export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, theme, selectedNodeId, onSelectNode, onSelectEdge, onChanged, onHelp }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const markersRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement }>>(new Map());
+  const markersRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement; kind: 'tower' | 'node' }>>(new Map());
   const clusterMarkersRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement }>>(new Map());
   const edgeLabelsRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement }>>(new Map());
   const loadedRef = useRef(false);
@@ -151,7 +188,8 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, them
     if (!map || !loadedRef.current) return;
     const { nodes, live, edges } = dataRef.current;
     const eff = computeEffCoords(nodes);
-    const pts = nodes.map((n) => { const c = eff.get(n.id); return c ? { n, c, p: map.project([c.lng, c.lat]) } : null; }).filter(Boolean) as { n: ApiNode; c: { lat: number; lng: number }; p: { x: number; y: number } }[];
+    // Los miembros apilados en una torre no cuentan como puntos sueltos (ya van dentro de ella).
+    const pts = nodes.map((n) => { const c = eff.get(n.id); return c && !c.inherited ? { n, c, p: map.project([c.lng, c.lat]) } : null; }).filter(Boolean) as { n: ApiNode; c: { lat: number; lng: number }; p: { x: number; y: number } }[];
 
     const CLUSTER_PX = 46;
     const used = new Set<number>();
@@ -286,15 +324,23 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, them
     if (!map || !ready) return;
     const markers = markersRef.current;
     const eff = computeEffCoords(nodes);
+    // Miembros que colapsan dentro de su torre/rack (no llevan marcador propio).
+    const membersByContainer = new Map<number, ApiNode[]>();
+    for (const n of nodes) { const c = eff.get(n.id); if (c?.inherited && n.containerId != null) (membersByContainer.get(n.containerId) ?? membersByContainer.set(n.containerId, []).get(n.containerId)!).push(n); }
     const seen = new Set<number>();
     for (const n of nodes) {
       const c = eff.get(n.id);
-      if (!c) continue;
+      if (!c || c.inherited) continue; // los miembros apilados se dibujan dentro de la torre
       seen.add(n.id);
+      // Un contenedor con miembros apilados se dibuja como torre vertical; el resto, marcador normal.
+      const stackMembers = CONTAINER_TYPES.includes(n.type) ? (membersByContainer.get(n.id) ?? []) : [];
+      const kind: 'tower' | 'node' = stackMembers.length ? 'tower' : 'node';
       let entry = markers.get(n.id);
+      if (entry && entry.kind !== kind) { entry.marker.remove(); markers.delete(n.id); entry = undefined; }
       if (!entry) {
-        const el = buildMarkerEl();
-        const marker = new maplibregl.Marker({ element: el, draggable: n.type !== 'monitor' }).setLngLat([c.lng, c.lat]).addTo(map);
+        const el = kind === 'tower' ? buildTowerEl() : buildMarkerEl();
+        el.dataset.cid = String(n.id);
+        const marker = new maplibregl.Marker({ element: el, draggable: n.type !== 'monitor', anchor: kind === 'tower' ? 'bottom' : 'center' }).setLngLat([c.lng, c.lat]).addTo(map);
         let draggedAt = 0;
         marker.on('dragstart', () => { draggedAt = Date.now(); el.style.cursor = 'grabbing'; });
         marker.on('dragend', () => {
@@ -302,15 +348,20 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, them
           const ll = marker.getLngLat();
           void api.updateNode(n.id, { lat: ll.lat, lng: ll.lng }).then(() => cbRef.current.onChanged());
         });
-        // Clic limpio (no fue arrastre) abre el panel del equipo.
-        el.addEventListener('click', (ev) => { ev.stopPropagation(); if (Date.now() - draggedAt < 250) return; cbRef.current.onSelectNode(n.id); });
-        entry = { marker, el };
+        // Clic limpio (no fue arrastre): abre el equipo (o el miembro pulsado en una torre).
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation(); if (Date.now() - draggedAt < 250) return;
+          const item = (ev.target as HTMLElement).closest('[data-mid]');
+          const mid = item?.getAttribute('data-mid');
+          cbRef.current.onSelectNode(mid ? Number(mid) : Number(el.dataset.cid));
+        });
+        entry = { marker, el, kind };
         markers.set(n.id, entry);
-      } else {
-        // No reposicionar mientras se arrastra este marcador (evita pelear con el drag).
-        if (!entry.marker.isDraggable() || !(entry.el.style.cursor === 'grabbing')) entry.marker.setLngLat([c.lng, c.lat]);
+      } else if (!entry.marker.isDraggable() || !(entry.el.style.cursor === 'grabbing')) {
+        entry.marker.setLngLat([c.lng, c.lat]);
       }
-      paintMarker(entry.el, n, dataRef.current.live[n.id], badgeFor(n, dataRef.current.nodes, dataRef.current.live));
+      if (kind === 'tower') paintTower(entry.el, n, membersByContainer.get(n.id) ?? [], dataRef.current.live);
+      else paintMarker(entry.el, n, dataRef.current.live[n.id], badgeFor(n, dataRef.current.nodes, dataRef.current.live));
     }
     for (const [id, entry] of markers) if (!seen.has(id)) { entry.marker.remove(); markers.delete(id); }
     recluster(); // reagrupar tras altas/bajas/movimientos
@@ -320,9 +371,14 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, them
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
+    const membersByContainer = new Map<number, ApiNode[]>();
+    const effM = computeEffCoords(nodes);
+    for (const n of nodes) { const c = effM.get(n.id); if (c?.inherited && n.containerId != null) (membersByContainer.get(n.containerId) ?? membersByContainer.set(n.containerId, []).get(n.containerId)!).push(n); }
     for (const n of nodes) {
       const entry = markersRef.current.get(n.id);
-      if (entry) paintMarker(entry.el, n, live[n.id], badgeFor(n, nodes, live));
+      if (!entry) continue;
+      if (entry.kind === 'tower') paintTower(entry.el, n, membersByContainer.get(n.id) ?? [], live);
+      else paintMarker(entry.el, n, live[n.id], badgeFor(n, nodes, live));
     }
     const byId = new Map(nodes.map((n) => [n.id, n]));
     const eff = computeEffCoords(nodes);
