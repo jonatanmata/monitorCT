@@ -214,6 +214,7 @@ export default function App() {
               onSelectEdge={(id) => { setSelectedEdgeId(id); setSelectedNodeId(null); }}
               onTopologyChanged={reload}
               onHelp={() => setHelpKey('palette')}
+              onOpenContainer={(id) => { setSelectedNodeId(id); setSelectedEdgeId(null); }}
             />
           )}
           {section === 'map' && (

@@ -196,6 +196,25 @@ select.inp { cursor: pointer; }
 .node-metric { font-size: 9.5px; color: var(--text2); font-family: 'IBM Plex Mono', monospace; display: flex; align-items: center; gap: 3px; }
 .node-metric b { color: var(--muted); font-weight: 400; }
 
+/* tarjeta de grupo (rack/torre) en la topología: lista sus miembros */
+.group-card {
+  width: 208px; background: var(--panel); border: 1.5px solid var(--border2); border-radius: 12px;
+  position: relative; overflow: hidden; box-shadow: 0 8px 22px rgba(0,0,0,.4);
+  transition: border-color .15s, box-shadow .15s;
+}
+.group-card.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accentSoft), 0 8px 22px rgba(0,0,0,.4); }
+.group-head { display: flex; align-items: center; gap: 7px; padding: 7px 9px; background: rgba(255,255,255,.03); border-bottom: 1px solid var(--border); }
+.group-ico { width: 22px; height: 22px; border-radius: 6px; background: var(--panel3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.group-name { font-size: 12px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.group-count { font-size: 9px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+.group-open { width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+.group-open:hover { color: var(--accent); border-color: var(--accent); }
+.group-body { padding: 5px 8px 7px; display: flex; flex-direction: column; gap: 2px; }
+.group-member { display: flex; align-items: center; gap: 7px; padding: 2px 4px; border-radius: 5px; }
+.group-member-bar { width: 4px; height: 13px; border-radius: 2px; flex-shrink: 0; }
+.group-member-name { font-size: 11px; color: var(--text2); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.group-empty { font-size: 10px; color: var(--muted); padding: 4px 2px; }
+
 /* edge insert button */
 .edge-plus {
   width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border2);
@@ -258,6 +277,7 @@ select.inp { cursor: pointer; }
 .geo-ico { width: 28px; height: 28px; border-radius: 8px; background: var(--panel); border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .geo-dot { position: absolute; left: 20px; top: -3px; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--panel); }
 .geo-name { font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: 600; color: var(--text); background: rgba(10,14,22,.72); padding: 2px 6px; border-radius: 6px; white-space: nowrap; }
+.geo-badge { position: absolute; left: 20px; bottom: -5px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; border: 1.5px solid var(--panel); color: #fff; font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; line-height: 1; }
 .geo-unplaced {
   position: absolute; top: 14px; right: 14px; width: 220px; max-height: 60%; z-index: 5;
   background: var(--bg2); border: 1px solid var(--border2); border-radius: 11px; box-shadow: var(--shadow);

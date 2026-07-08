@@ -70,13 +70,24 @@ function effStatus(node: ApiNode, live: LiveNode | undefined): string {
   return s;
 }
 
+const STATUS_RANK: Record<string, number> = { down: 3, warning: 2, unknown: 1, up: 0 };
+
+/** Badge de un contenedor (rack/torre): nº de miembros + peor estado. null si no es contenedor. */
+function badgeFor(node: ApiNode, nodes: ApiNode[], live: Record<number, LiveNode>): { count: number; worst: string } | null {
+  if (!CONTAINER_TYPES.includes(node.type)) return null;
+  const members = nodes.filter((m) => m.containerId === node.id);
+  let worst = 'unknown';
+  for (const m of members) { const s = effStatus(m, live[m.id]); if ((STATUS_RANK[s] ?? 0) >= (STATUS_RANK[worst] ?? 0)) worst = s; }
+  return { count: members.length, worst };
+}
+
 function buildMarkerEl(): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'geo-marker';
-  el.innerHTML = `<span class="geo-ring"></span><span class="geo-ico"></span><span class="geo-dot"></span><span class="geo-name"></span>`;
+  el.innerHTML = `<span class="geo-ring"></span><span class="geo-ico"></span><span class="geo-dot"></span><span class="geo-name"></span><span class="geo-badge"></span>`;
   return el;
 }
-function paintMarker(el: HTMLElement, node: ApiNode, live: LiveNode | undefined): void {
+function paintMarker(el: HTMLElement, node: ApiNode, live: LiveNode | undefined, badge?: { count: number; worst: string } | null): void {
   const meta = typeMeta(node.type);
   const status = effStatus(node, live);
   const color = HEALTH_HEX[status];
@@ -84,6 +95,7 @@ function paintMarker(el: HTMLElement, node: ApiNode, live: LiveNode | undefined)
   const dot = el.querySelector('.geo-dot') as HTMLElement;
   const ring = el.querySelector('.geo-ring') as HTMLElement;
   const nameEl = el.querySelector('.geo-name') as HTMLElement;
+  const badgeEl = el.querySelector('.geo-badge') as HTMLElement;
   ico.style.color = meta.color;
   ico.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[meta.icon]}"/></svg>`;
   dot.style.background = color;
@@ -91,6 +103,16 @@ function paintMarker(el: HTMLElement, node: ApiNode, live: LiveNode | undefined)
   const down = status === 'down';
   ring.style.boxShadow = status === 'unknown' ? 'none' : `0 0 0 2px ${color}`;
   ring.style.animation = down ? 'pulse 1.4s infinite' : 'none';
+  if (badge) {
+    // Contenedor: el dot muestra el peor estado de los miembros; el badge, cuántos hay.
+    const bc = HEALTH_HEX[badge.worst] ?? HEALTH_HEX.unknown;
+    dot.style.background = bc;
+    badgeEl.textContent = String(badge.count);
+    badgeEl.style.display = badge.count > 0 ? 'flex' : 'none';
+    badgeEl.style.background = bc;
+  } else {
+    badgeEl.style.display = 'none';
+  }
 }
 
 export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, selectedNodeId, onSelectNode, onSelectEdge, onChanged, onHelp }: Props) {
@@ -198,7 +220,7 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
         // No reposicionar mientras se arrastra este marcador (evita pelear con el drag).
         if (!entry.marker.isDraggable() || !(entry.el.style.cursor === 'grabbing')) entry.marker.setLngLat([c.lng, c.lat]);
       }
-      paintMarker(entry.el, n, dataRef.current.live[n.id]);
+      paintMarker(entry.el, n, dataRef.current.live[n.id], badgeFor(n, dataRef.current.nodes, dataRef.current.live));
     }
     for (const [id, entry] of markers) if (!seen.has(id)) { entry.marker.remove(); markers.delete(id); }
   }, [nodes, ready]);
@@ -209,7 +231,7 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
     if (!map || !ready) return;
     for (const n of nodes) {
       const entry = markersRef.current.get(n.id);
-      if (entry) paintMarker(entry.el, n, live[n.id]);
+      if (entry) paintMarker(entry.el, n, live[n.id], badgeFor(n, nodes, live));
     }
     const byId = new Map(nodes.map((n) => [n.id, n]));
     const eff = computeEffCoords(nodes);

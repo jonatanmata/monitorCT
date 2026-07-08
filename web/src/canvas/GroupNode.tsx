@@ -1,0 +1,61 @@
+import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
+import type { ApiNode, LiveNode } from '../types';
+import { Icon, ICONS, typeMeta } from '../ui/meta';
+
+/** Estado en vivo de un miembro, para la lista y el peor-estado del grupo. */
+export interface GroupMember { node: ApiNode; live: LiveNode | null }
+
+export type GroupNodeData = {
+  container: ApiNode;
+  members: GroupMember[];
+  worst: 'up' | 'warning' | 'down' | 'unknown';
+  onOpen: (id: number) => void;
+};
+
+export type GroupFlowNode = Node<GroupNodeData, 'group'>;
+
+const STATUS_COLOR: Record<string, string> = {
+  up: 'var(--up)', warning: 'var(--warn)', down: 'var(--down)', unknown: 'var(--muted)',
+};
+
+export function GroupNode({ data, selected }: NodeProps<GroupFlowNode>) {
+  const { container, members, worst, onOpen } = data;
+  const meta = typeMeta(container.type);
+  const worstColor = STATUS_COLOR[worst];
+
+  return (
+    <div className={`group-card ${selected ? 'selected' : ''}`}>
+      <Handle type="target" position={Position.Left} />
+      <div className="group-head">
+        <span className="group-ico" style={{ color: meta.color }}>
+          <Icon path={ICONS[meta.icon]} size={15} strokeWidth={1.8} />
+        </span>
+        <span className="group-name">{container.name}</span>
+        <span className="group-count">{members.length}{container.type === 'rack' ? 'u' : ''}</span>
+        <span className="node-dot" style={{ background: worstColor, animation: worst === 'down' ? 'blink 1.4s infinite' : undefined }} />
+        <button
+          className="group-open"
+          title="Abrir en vista física"
+          onClick={(e) => { e.stopPropagation(); onOpen(container.id); }}
+        >
+          <Icon path="M9 18l6-6-6-6" size={12} strokeWidth={2} />
+        </button>
+      </div>
+      <div className="group-body">
+        {members.length === 0 && <div className="group-empty">Vacío · añade equipos</div>}
+        {members.map((m) => {
+          const mm = typeMeta(m.node.type);
+          const st = m.node.type === 'monitor' ? 'up' : m.live?.status ?? 'unknown';
+          return (
+            <div key={m.node.id} className="group-member">
+              <span className="group-member-bar" style={{ background: mm.color }} />
+              <span className="group-member-name">{m.node.name}</span>
+              <span className="node-dot" style={{ width: 7, height: 7, background: STATUS_COLOR[st] }} />
+            </div>
+          );
+        })}
+      </div>
+      <Handle type="source" position={Position.Right} />
+    </div>
+  );
+}

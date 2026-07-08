@@ -6,14 +6,19 @@ import {
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { DeviceNode, type DeviceFlowNode } from './DeviceNode';
+import { GroupNode, type GroupFlowNode, type GroupMember } from './GroupNode';
 import { FlowEdge as FlowEdgeComponent } from './FlowEdge';
 import type { ApiNode, ApiEdge, LiveNode, NodeType } from '../types';
-import { NODE_TYPE_LABELS, ADDABLE_TYPES, INSERTABLE_TYPES, nodesForInsert } from '../types';
+import { NODE_TYPE_LABELS, ADDABLE_TYPES, INSERTABLE_TYPES, CONTAINER_TYPES, nodesForInsert } from '../types';
 import { api } from '../api';
 import { Icon, ICONS, TYPE_META } from '../ui/meta';
 
-const nodeTypes = { device: DeviceNode };
+const nodeTypes = { device: DeviceNode, group: GroupNode };
 const edgeTypes = { flow: FlowEdgeComponent };
+
+const STATUS_RANK = { down: 3, warning: 2, unknown: 1, up: 0 } as const;
+type Health = 'down' | 'warning' | 'up' | 'unknown';
+const asHealth = (s?: string): Health => (s === 'down' || s === 'warning' || s === 'up' ? s : 'unknown');
 
 const STATUS_HEX: Record<string, string> = {
   up: '#33cc7a', warning: '#f5b13d', down: '#f0556b', unknown: '#6b788f',
@@ -30,11 +35,13 @@ interface Props {
   onSelectEdge: (id: number | null) => void;
   onTopologyChanged: () => void;
   onHelp: () => void;
+  /** Abrir un rack/torre en la vista física «Rack y Torre». */
+  onOpenContainer?: (id: number) => void;
 }
 
 export function TopologyCanvas({
   nodes, edges, live, theme, selectedNodeId, selectedEdgeId,
-  onSelectNode, onSelectEdge, onTopologyChanged, onHelp,
+  onSelectNode, onSelectEdge, onTopologyChanged, onHelp, onOpenContainer,
 }: Props) {
   const [connecting, setConnecting] = useState(false);
   const [insertMenu, setInsertMenu] = useState<{ edgeId: number; x: number; y: number } | null>(null);
@@ -43,44 +50,90 @@ export function TopologyCanvas({
     setInsertMenu({ edgeId: parseInt(edgeId, 10), x, y });
   }, []);
 
-  const flowNodes: DeviceFlowNode[] = useMemo(
-    () =>
-      nodes.map((n) => ({
-        id: String(n.id),
-        type: 'device' as const,
-        position: { x: n.posX, y: n.posY },
-        selected: n.id === selectedNodeId,
-        deletable: n.type !== 'monitor',
-        data: { node: n, live: live[n.id] ?? null },
-      })),
-    [nodes, live, selectedNodeId],
-  );
+  // --- pertenencia a contenedores: los miembros no se dibujan sueltos; el rack/torre ---
+  // --- se dibuja como tarjeta de grupo y los enlaces se re-mapean a su contenedor. ---
+  const { containerOf, statusOf } = useMemo(() => {
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const isContainer = (id: number) => { const t = byId.get(id)?.type; return t != null && (CONTAINER_TYPES as NodeType[]).includes(t); };
+    const containerOf = new Map<number, number>();
+    for (const n of nodes) {
+      if (n.containerId != null && isContainer(n.containerId)) containerOf.set(n.id, n.containerId);
+    }
+    // Estado en vivo de un nodo (el monitor siempre "up").
+    const rawStatus = (n: ApiNode): Health => (n.type === 'monitor' ? 'up' : asHealth(live[n.id]?.status));
+    const statusOf = (id: number): Health => { const n = byId.get(id); return n ? rawStatus(n) : 'unknown'; };
+    return { containerOf, statusOf };
+  }, [nodes, live]);
 
-  const flowEdges: FlowEdge[] = useMemo(
-    () =>
-      edges.map((e) => {
-        // Color por el PEOR de los dos extremos (independiente de la dirección del enlace).
-        const rank = { down: 3, warning: 2, unknown: 1, up: 0 } as const;
-        const st = (s?: string) => (s === 'down' || s === 'warning' || s === 'up' ? s : 'unknown') as 'down' | 'warning' | 'up' | 'unknown';
-        const a = st(live[e.source_id]?.status), b = st(live[e.target_id]?.status);
-        let health: 'down' | 'warning' | 'up' | 'unknown' = rank[a] >= rank[b] ? a : b;
-        // Si un extremo está cerca del techo de ancho de banda, el enlace se pinta naranja.
-        if (health !== 'down' && (live[e.target_id]?.bwNear || live[e.source_id]?.bwNear)) health = 'warning';
-        return {
-          id: String(e.id),
-          source: String(e.source_id),
-          target: String(e.target_id),
-          type: 'flow' as const,
-          selected: e.id === selectedEdgeId,
-          data: {
-            label: e.label || (e.capacity_mbps ? `${e.capacity_mbps} Mbps` : undefined),
-            health,
-            onInsert: openInsertMenu,
-          },
-        };
-      }),
-    [edges, live, selectedEdgeId, openInsertMenu],
-  );
+  // Peor estado de los miembros de cada contenedor (para el dot del grupo).
+  const worstByContainer = useMemo(() => {
+    const worst = new Map<number, Health>();
+    for (const n of nodes) {
+      const cid = containerOf.get(n.id);
+      if (cid == null) continue;
+      let s = statusOf(n.id);
+      if (s !== 'down' && live[n.id]?.bwNear) s = 'warning';
+      const cur = worst.get(cid) ?? 'unknown';
+      if (STATUS_RANK[s] >= STATUS_RANK[cur]) worst.set(cid, s);
+    }
+    return worst;
+  }, [nodes, containerOf, statusOf, live]);
+
+  const flowNodes: (DeviceFlowNode | GroupFlowNode)[] = useMemo(() => {
+    const out: (DeviceFlowNode | GroupFlowNode)[] = [];
+    for (const n of nodes) {
+      const isContainer = (CONTAINER_TYPES as NodeType[]).includes(n.type);
+      if (isContainer) {
+        const members: GroupMember[] = nodes
+          .filter((m) => containerOf.get(m.id) === n.id)
+          .map((m) => ({ node: m, live: live[m.id] ?? null }));
+        out.push({
+          id: String(n.id), type: 'group', position: { x: n.posX, y: n.posY },
+          selected: n.id === selectedNodeId, deletable: true,
+          data: { container: n, members, worst: worstByContainer.get(n.id) ?? 'unknown', onOpen: (id) => (onOpenContainer ? onOpenContainer(id) : onSelectNode(id)) },
+        });
+      } else if (!containerOf.has(n.id)) {
+        // Nodo suelto (los miembros de un contenedor se dibujan dentro de la tarjeta).
+        out.push({
+          id: String(n.id), type: 'device', position: { x: n.posX, y: n.posY },
+          selected: n.id === selectedNodeId, deletable: n.type !== 'monitor',
+          data: { node: n, live: live[n.id] ?? null },
+        });
+      }
+    }
+    return out;
+  }, [nodes, live, selectedNodeId, containerOf, worstByContainer, onOpenContainer, onSelectNode]);
+
+  const flowEdges: FlowEdge[] = useMemo(() => {
+    // Extremo dibujado: si el nodo está en un contenedor, el enlace va a la tarjeta del contenedor.
+    const rendered = (id: number) => containerOf.get(id) ?? id;
+    // Estado efectivo del extremo dibujado (contenedor = peor de sus miembros).
+    const effStatus = (renderedId: number): Health =>
+      (CONTAINER_TYPES as NodeType[]).includes(nodes.find((n) => n.id === renderedId)?.type as NodeType)
+        ? worstByContainer.get(renderedId) ?? 'unknown'
+        : statusOf(renderedId);
+    const seen = new Set<string>();
+    const out: FlowEdge[] = [];
+    for (const e of edges) {
+      const ra = rendered(e.source_id), rb = rendered(e.target_id);
+      if (ra === rb) continue; // enlace interno de un contenedor → oculto en la tarjeta
+      const key = ra < rb ? `${ra}-${rb}` : `${rb}-${ra}`;
+      if (seen.has(key)) continue; // deduplicar líneas entre las mismas dos tarjetas/nodos
+      seen.add(key);
+      const a = effStatus(ra), b = effStatus(rb);
+      let health: Health = STATUS_RANK[a] >= STATUS_RANK[b] ? a : b;
+      if (health !== 'down' && (live[e.target_id]?.bwNear || live[e.source_id]?.bwNear)) health = 'warning';
+      out.push({
+        id: String(e.id), source: String(ra), target: String(rb), type: 'flow' as const,
+        selected: e.id === selectedEdgeId,
+        data: {
+          label: e.label || (e.capacity_mbps ? `${e.capacity_mbps} Mbps` : undefined),
+          health, onInsert: openInsertMenu,
+        },
+      });
+    }
+    return out;
+  }, [edges, nodes, live, selectedEdgeId, openInsertMenu, containerOf, worstByContainer, statusOf]);
 
   const doInsert = useCallback(
     (type: NodeType) => {
@@ -208,7 +261,8 @@ export function TopologyCanvas({
             pannable zoomable
             maskColor={theme === 'dark' ? 'rgba(10,14,22,0.6)' : 'rgba(200,209,224,0.5)'}
             nodeColor={(n) => {
-              const nd = n.data as { live?: LiveNode; node?: ApiNode };
+              const nd = n.data as { live?: LiveNode; node?: ApiNode; worst?: string };
+              if (nd.worst) return STATUS_HEX[nd.worst] ?? STATUS_HEX.unknown; // tarjeta de grupo
               if (nd.node?.type === 'monitor') return STATUS_HEX.up;
               return STATUS_HEX[nd.live?.status ?? 'unknown'];
             }}
