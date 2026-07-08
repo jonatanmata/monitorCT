@@ -120,6 +120,9 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
       attributionControl: false,
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
+    // Control «mi ubicación» (botón para centrar en el dispositivo).
+    const geolocate = new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: false, showUserLocation: true });
+    map.addControl(geolocate, 'bottom-left');
     mapRef.current = map;
 
     map.on('load', () => {
@@ -137,6 +140,14 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
       map.on('mouseenter', 'edges-base', () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', 'edges-base', () => { map.getCanvas().style.cursor = ''; });
       map.resize(); // el contenedor pudo iniciar sin tamaño (lazy mount / flex)
+      // Sin nodos ubicados: centrar en la ubicación del dispositivo (si el navegador la da).
+      if (!placed.length && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 14 }),
+          () => { /* permiso denegado: se queda en el centro por defecto */ },
+          { enableHighAccuracy: true, timeout: 8000 },
+        );
+      }
       setReady(true);
     });
 
@@ -171,16 +182,21 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
       let entry = markers.get(n.id);
       if (!entry) {
         const el = buildMarkerEl();
-        el.addEventListener('click', (ev) => { ev.stopPropagation(); cbRef.current.onSelectNode(n.id); });
         const marker = new maplibregl.Marker({ element: el, draggable: n.type !== 'monitor' }).setLngLat([c.lng, c.lat]).addTo(map);
+        let draggedAt = 0;
+        marker.on('dragstart', () => { draggedAt = Date.now(); el.style.cursor = 'grabbing'; });
         marker.on('dragend', () => {
+          draggedAt = Date.now(); el.style.cursor = '';
           const ll = marker.getLngLat();
           void api.updateNode(n.id, { lat: ll.lat, lng: ll.lng }).then(() => cbRef.current.onChanged());
         });
+        // Clic limpio (no fue arrastre) abre el panel del equipo.
+        el.addEventListener('click', (ev) => { ev.stopPropagation(); if (Date.now() - draggedAt < 250) return; cbRef.current.onSelectNode(n.id); });
         entry = { marker, el };
         markers.set(n.id, entry);
       } else {
-        entry.marker.setLngLat([c.lng, c.lat]);
+        // No reposicionar mientras se arrastra este marcador (evita pelear con el drag).
+        if (!entry.marker.isDraggable() || !(entry.el.style.cursor === 'grabbing')) entry.marker.setLngLat([c.lng, c.lat]);
       }
       paintMarker(entry.el, n, dataRef.current.live[n.id]);
     }
