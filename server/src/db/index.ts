@@ -20,16 +20,17 @@ export type NodeType =
   | 'monitor' | 'gateway-isp' | 'router' | 'mikrotik' | 'switch'
   | 'ptp-mimosa' | 'ap-ubiquiti' | 'litebeam' | 'cliente'
   | 'torre' | 'rack'
-  | 'olt' | 'onu' | 'nap' | 'poste';
+  | 'olt' | 'onu' | 'nap' | 'poste'
+  | 'poe' | 'patch';
 export const NODE_TYPES: NodeType[] = [
   'monitor', 'gateway-isp', 'router', 'mikrotik', 'switch',
   'ptp-mimosa', 'ap-ubiquiti', 'litebeam', 'cliente',
-  'torre', 'rack', 'olt', 'onu', 'nap', 'poste',
+  'torre', 'rack', 'olt', 'onu', 'nap', 'poste', 'poe', 'patch',
 ];
 /** Contenedores: agrupan otros equipos por referencia (container_id), no por enlaces. */
 export const CONTAINER_TYPES: NodeType[] = ['torre', 'rack'];
-/** Pasivos: no se monitorean (fibra, cajas, postes, switch no gestionado). */
-export const PASSIVE_TYPES: NodeType[] = ['nap', 'poste', 'switch', 'rack', 'torre'];
+/** Pasivos: no se monitorean (fibra, cajas, postes, switch no gestionado, PoE, patch panel). */
+export const PASSIVE_TYPES: NodeType[] = ['nap', 'poste', 'switch', 'rack', 'torre', 'poe', 'patch'];
 
 /**
  * Migración idempotente: las bases creadas antes de añadir el tipo 'monitor'
@@ -89,6 +90,10 @@ addColumnIfMissing('nodes', 'meta', 'TEXT');
 // Enlaces: medio físico + datos de fibra (JSON) para el cálculo de potencia PON.
 addColumnIfMissing('edges', 'medium', "TEXT NOT NULL DEFAULT ''");
 addColumnIfMissing('edges', 'fiber', 'TEXT');
+// Cableado puerto→puerto: un enlace es también un cable físico entre dos puertos concretos
+// (ej. RB:sfp1 → OLT:up). Vacío = enlace lógico sin puerto asignado.
+addColumnIfMissing('edges', 'source_port', "TEXT NOT NULL DEFAULT ''");
+addColumnIfMissing('edges', 'target_port', "TEXT NOT NULL DEFAULT ''");
 
 /** Garantiza que exista el nodo Monitor (raíz singleton = este PC). No borrable. */
 export function ensureMonitorNode(): void {
@@ -128,6 +133,8 @@ export interface EdgeRow {
   source_interface: string;
   medium: string;
   fiber: string | null;
+  source_port: string;
+  target_port: string;
 }
 
 export interface Credentials {

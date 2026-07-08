@@ -47,6 +47,8 @@ const TYPE_DEFAULT_NAME: Record<NodeType, string> = {
   'onu': 'ONU',
   'nap': 'NAP / Caja',
   'poste': 'Poste',
+  'poe': 'Fuente PoE',
+  'patch': 'Patch Panel',
 };
 function defaultNameForType(type: NodeType): string {
   return TYPE_DEFAULT_NAME[type] ?? type;
@@ -100,6 +102,7 @@ function edgeToJson(e: EdgeRow) {
     id: e.id, source_id: e.source_id, target_id: e.target_id,
     label: e.label, capacity_mbps: e.capacity_mbps, source_interface: e.source_interface,
     medium: e.medium ?? '', fiber: safeParse(e.fiber),
+    source_port: e.source_port ?? '', target_port: e.target_port ?? '',
   };
 }
 
@@ -204,10 +207,10 @@ export function registerApiRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/edges', async (req) => {
-    const b = req.body as { sourceId: number; targetId: number; label?: string; capacityMbps?: number; sourceInterface?: string; medium?: string; fiber?: unknown };
+    const b = req.body as { sourceId: number; targetId: number; label?: string; capacityMbps?: number; sourceInterface?: string; medium?: string; fiber?: unknown; sourcePort?: string; targetPort?: string };
     const res = db
-      .prepare('INSERT INTO edges (source_id, target_id, label, capacity_mbps, source_interface, medium, fiber) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(b.sourceId, b.targetId, b.label ?? '', b.capacityMbps ?? null, b.sourceInterface ?? '', b.medium ?? '', b.fiber != null ? JSON.stringify(b.fiber) : null);
+      .prepare('INSERT INTO edges (source_id, target_id, label, capacity_mbps, source_interface, medium, fiber, source_port, target_port) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(b.sourceId, b.targetId, b.label ?? '', b.capacityMbps ?? null, b.sourceInterface ?? '', b.medium ?? '', b.fiber != null ? JSON.stringify(b.fiber) : null, b.sourcePort ?? '', b.targetPort ?? '');
     return edgeToJson(db.prepare('SELECT * FROM edges WHERE id = ?').get(res.lastInsertRowid) as EdgeRow);
   });
 
@@ -215,15 +218,17 @@ export function registerApiRoutes(app: FastifyInstance): void {
     const id = parseInt((req.params as { id: string }).id, 10);
     const existing = db.prepare('SELECT * FROM edges WHERE id = ?').get(id) as EdgeRow | undefined;
     if (!existing) return reply.code(404).send({ error: 'Arista no encontrada' });
-    const b = req.body as { label?: string; capacityMbps?: number | null; sourceInterface?: string; medium?: string; fiber?: unknown };
+    const b = req.body as { label?: string; capacityMbps?: number | null; sourceInterface?: string; medium?: string; fiber?: unknown; sourcePort?: string; targetPort?: string };
     const body = req.body as Record<string, unknown>;
     const fiber = 'fiber' in body ? (b.fiber != null ? JSON.stringify(b.fiber) : null) : existing.fiber;
-    db.prepare('UPDATE edges SET label = ?, capacity_mbps = ?, source_interface = ?, medium = ?, fiber = ? WHERE id = ?').run(
+    db.prepare('UPDATE edges SET label = ?, capacity_mbps = ?, source_interface = ?, medium = ?, fiber = ?, source_port = ?, target_port = ? WHERE id = ?').run(
       b.label ?? existing.label,
       b.capacityMbps === undefined ? existing.capacity_mbps : b.capacityMbps,
       b.sourceInterface ?? existing.source_interface,
       b.medium ?? existing.medium ?? '',
       fiber,
+      'sourcePort' in body ? (b.sourcePort ?? '') : existing.source_port,
+      'targetPort' in body ? (b.targetPort ?? '') : existing.target_port,
       id,
     );
     return edgeToJson(db.prepare('SELECT * FROM edges WHERE id = ?').get(id) as EdgeRow);
@@ -234,8 +239,8 @@ export function registerApiRoutes(app: FastifyInstance): void {
     const onuId = parseInt((req.params as { onuId: string }).onuId, 10);
     const nodes = (db.prepare('SELECT id, type, name, meta FROM nodes').all() as { id: number; type: string; name: string; meta: string | null }[])
       .map((n) => ({ id: n.id, type: n.type, name: n.name, meta: safeParse(n.meta) }));
-    const edges = (db.prepare('SELECT source_id, target_id, fiber FROM edges').all() as { source_id: number; target_id: number; fiber: string | null }[])
-      .map((e) => ({ source_id: e.source_id, target_id: e.target_id, fiber: safeParse(e.fiber) as { lengthM?: number; dbPerKm?: number; connectors?: number; oltPort?: string } | null }));
+    const edges = (db.prepare('SELECT source_id, target_id, fiber, source_port, target_port FROM edges').all() as { source_id: number; target_id: number; fiber: string | null; source_port: string; target_port: string }[])
+      .map((e) => ({ source_id: e.source_id, target_id: e.target_id, fiber: safeParse(e.fiber) as { lengthM?: number; dbPerKm?: number; connectors?: number; oltPort?: string } | null, source_port: e.source_port, target_port: e.target_port }));
     return computePonBudget(nodes, edges, onuId);
   });
 

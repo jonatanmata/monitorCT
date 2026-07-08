@@ -21,6 +21,8 @@ export const ICONS = {
   onu: 'M4 7h16v10H4zM8 7v10M4 11h4M15 10h2M15 13h2',
   nap: 'M5 3h14v18H5zM5 12h14M9 7h6M9 16h6',
   poste: 'M12 2v20M8 22h8M12 5h7M12 9h5M12 5L19 3M12 9l5-2',
+  poe: 'M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0zM12 17v5',
+  patch: 'M3 6h18v12H3zM6 10h.01M9 10h.01M12 10h.01M15 10h.01M18 10h.01M7 14h2M11 14h2M15 14h2',
 } as const;
 
 export type IconKey = keyof typeof ICONS;
@@ -48,6 +50,8 @@ export const TYPE_META: Record<NodeType, TypeMeta> = {
   'onu': { icon: 'onu', color: '#33cc7a', label: 'ONU' },
   'nap': { icon: 'nap', color: '#f5b13d', label: 'NAP / Caja' },
   'poste': { icon: 'poste', color: '#8a5a2b', label: 'Poste' },
+  'poe': { icon: 'poe', color: '#f5b13d', label: 'Fuente PoE' },
+  'patch': { icon: 'patch', color: '#8b9cc4', label: 'Patch Panel' },
 };
 
 /** Metadatos del tipo con fallback (evita crash si el frontend es más viejo que un tipo nuevo). */

@@ -56,10 +56,10 @@ export const api = {
       findings?: { severity: 'critical' | 'warning' | 'info' | 'ok'; area: string; title: string; detail: string; recommendation?: string }[];
     }>(`/api/nodes/${id}/audit`, { method: 'POST' }),
 
-  createEdge: (body: { sourceId: number; targetId: number; label?: string; capacityMbps?: number; sourceInterface?: string }) =>
+  createEdge: (body: { sourceId: number; targetId: number; label?: string; capacityMbps?: number; sourceInterface?: string; medium?: string; fiber?: unknown; sourcePort?: string; targetPort?: string }) =>
     http<ApiEdge>('/api/edges', { method: 'POST', body: JSON.stringify(body) }),
 
-  updateEdge: (id: number, body: { label?: string; capacityMbps?: number | null; sourceInterface?: string; medium?: string; fiber?: unknown }) =>
+  updateEdge: (id: number, body: { label?: string; capacityMbps?: number | null; sourceInterface?: string; medium?: string; fiber?: unknown; sourcePort?: string; targetPort?: string }) =>
     http<ApiEdge>(`/api/edges/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
 
   ponBudget: (onuId: number) =>

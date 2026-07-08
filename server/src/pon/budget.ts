@@ -16,7 +16,7 @@ export const SPLITTER_LOSS_DB: Record<number, number> = {
 
 export interface PonNode { id: number; type: string; name: string; meta: unknown }
 export interface FiberInfo { lengthM?: number; dbPerKm?: number; connectors?: number; oltPort?: string }
-export interface PonEdge { source_id: number; target_id: number; fiber: FiberInfo | null }
+export interface PonEdge { source_id: number; target_id: number; fiber: FiberInfo | null; source_port?: string; target_port?: string }
 export interface PonHop { node: string; kind: 'olt' | 'fiber' | 'splitter' | 'onu'; detail: string; lossDb: number }
 export interface PonBudget {
   supported: boolean;
@@ -75,7 +75,12 @@ export function computePonBudget(nodes: PonNode[], edges: PonEdge[], onuId: numb
   const oltNode = byId.get(oltId)!;
   const oltMeta = (oltNode.meta ?? {}) as { ports?: { name: string; txDbm: number }[] };
   const firstEdge = revEdges[0]; // arista entre olt y su vecino en el camino
-  const portName = firstEdge?.fiber?.oltPort;
+  // Puerto del lado-OLT: el puerto del extremo que toca la OLT en la arista adyacente.
+  // Retrocompat: si no hay puerto de cable, cae en el antiguo fiber.oltPort.
+  const oltSidePort = firstEdge
+    ? (firstEdge.source_id === oltId ? firstEdge.source_port : firstEdge.target_port)
+    : undefined;
+  const portName = (oltSidePort && oltSidePort !== '') ? oltSidePort : firstEdge?.fiber?.oltPort;
   let txDbm = DEFAULT_OLT_TX_DBM;
   const port = oltMeta.ports?.find((p) => p.name === portName);
   if (port) txDbm = port.txDbm;

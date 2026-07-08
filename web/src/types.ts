@@ -2,7 +2,8 @@ export type NodeType =
   | 'monitor' | 'gateway-isp' | 'router' | 'mikrotik' | 'switch'
   | 'ptp-mimosa' | 'ap-ubiquiti' | 'litebeam' | 'cliente'
   | 'torre' | 'rack'
-  | 'olt' | 'onu' | 'nap' | 'poste';
+  | 'olt' | 'onu' | 'nap' | 'poste'
+  | 'poe' | 'patch';
 
 export interface ApiNode {
   id: number;
@@ -47,12 +48,41 @@ export interface ApiEdge {
   source_interface: string;
   medium: string;
   fiber: FiberInfo | null;
+  /** Cableado puerto→puerto: id de puerto en el equipo origen/destino ('' = sin asignar). */
+  source_port: string;
+  target_port: string;
 }
 
 /** Metadatos tipados por tipo de nodo. */
 export interface OltMeta { ports?: { name: string; txDbm: number }[] }
 export interface NapMeta { splitRatio?: number }
 export interface OnuMeta { rxSensitivityDbm?: number }
+
+/** Posición en el lienzo físico de «Rack y Torre». */
+export interface PhysPos { x: number; y: number }
+
+/**
+ * Superset de `meta` para las vistas física/topología. Todos los campos son
+ * opcionales; cada tipo de nodo usa los que le aplican. Convive con OltMeta/NapMeta/OnuMeta.
+ */
+export interface NodeMeta {
+  // OLT / NAP / ONU (existentes)
+  ports?: { name: string; txDbm: number }[];
+  splitRatio?: number;
+  rxSensitivityDbm?: number;
+  // Contenedor (rack/torre): posición en el lienzo físico.
+  phys?: PhysPos;
+  // Miembro de rack: orden del slot (arriba→abajo). Radio de torre: altura 0..1.
+  slot?: number;
+  mountF?: number;
+  // Conteo de puertos (auto-derivado del tipo, ajustable por equipo).
+  ponPorts?: number;
+  switchPorts?: number;
+  poePorts?: number;
+  patchPorts?: number;
+  splitterOut?: number;
+  lanPorts?: number;
+}
 
 /** Código de colores estándar TIA-598 para hilos/buffers de fibra. */
 export const TIA_COLORS: { name: string; hex: string }[] = [
@@ -120,6 +150,8 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   'onu': 'ONU',
   'nap': 'NAP / Caja',
   'poste': 'Poste',
+  'poe': 'Fuente PoE',
+  'patch': 'Patch Panel',
 };
 
 export const NODE_TYPE_ICONS: Record<NodeType, string> = {
@@ -138,6 +170,8 @@ export const NODE_TYPE_ICONS: Record<NodeType, string> = {
   'onu': '📦',
   'nap': '🗃️',
   'poste': '📍',
+  'poe': '⚡',
+  'patch': '🎛️',
 };
 
 /** Contenedores (agrupan equipos por pertenencia, no por enlaces). */
@@ -146,7 +180,7 @@ export const CONTAINER_TYPES: NodeType[] = ['torre', 'rack'];
 /** Tipos que el usuario puede añadir desde la paleta (el monitor es singleton y automático). */
 export const ADDABLE_TYPES: NodeType[] = [
   'gateway-isp', 'router', 'mikrotik', 'switch', 'ptp-mimosa', 'ap-ubiquiti', 'litebeam', 'cliente',
-  'olt', 'onu', 'nap', 'poste', 'torre', 'rack',
+  'olt', 'onu', 'nap', 'poste', 'poe', 'patch', 'torre', 'rack',
 ];
 
 /** Tipos insertables al «romper el hilo» de un enlace (los contenedores no se insertan en enlaces). */

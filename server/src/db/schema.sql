@@ -36,7 +36,10 @@ CREATE TABLE IF NOT EXISTS edges (
   source_interface TEXT NOT NULL DEFAULT '',
   -- Medio físico del enlace ('', 'fiber', 'copper', 'wireless') y datos de fibra (JSON) para PON
   medium TEXT NOT NULL DEFAULT '',
-  fiber TEXT
+  fiber TEXT,
+  -- Cableado puerto→puerto: el enlace es también un cable entre dos puertos concretos (ej. sfp1, pon1)
+  source_port TEXT NOT NULL DEFAULT '',
+  target_port TEXT NOT NULL DEFAULT ''
 );
 
 -- Series de tiempo. node_id o edge_id según a qué pertenece la métrica.
