@@ -121,8 +121,13 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
       });
       map.on('mouseenter', 'edges-base', () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', 'edges-base', () => { map.getCanvas().style.cursor = ''; });
+      map.resize(); // el contenedor pudo iniciar sin tamaño (lazy mount / flex)
       setReady(true);
     });
+
+    // Reajustar el lienzo cuando el contenedor cambia de tamaño (colapsar sidebar, etc.).
+    const ro = new ResizeObserver(() => map.resize());
+    if (containerRef.current) ro.observe(containerRef.current);
 
     // animación de flujo en las líneas (dash cíclico)
     const dashSeq = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
@@ -133,7 +138,7 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
       try { map.setPaintProperty('edges-flow', 'line-dasharray', dashSeq[step]); } catch { /* estilo recargando */ }
     }, 90);
 
-    return () => { clearInterval(anim); map.remove(); mapRef.current = null; loadedRef.current = false; setReady(false); };
+    return () => { clearInterval(anim); ro.disconnect(); map.remove(); mapRef.current = null; loadedRef.current = false; setReady(false); };
     // Recrear el mapa si cambia la key o el estilo
   }, [maptilerKey, mapStyle]); // eslint-disable-line react-hooks/exhaustive-deps
 

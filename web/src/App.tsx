@@ -83,6 +83,8 @@ export default function App() {
   }, []);
 
   useEffect(() => { reload(); loadFocus(); loadAlertCount(); loadMap(); }, [reload, loadFocus, loadAlertCount, loadMap]);
+  // Refrescar la key/estilo del mapa al entrar en la sección (por si se acaba de guardar en Ajustes).
+  useEffect(() => { if (section === 'map') loadMap(); }, [section, loadMap]);
   useEffect(() => { loadAlertCount(); }, [alertRefresh, loadAlertCount]);
 
   const { send } = useWebSocket((event, data) => {
