@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { ApiNode, ApiEdge, LiveNode } from '../types';
@@ -47,17 +47,19 @@ function fmtDist(m: number): string {
  * - MapTiler (el resto): style.json vectorial nativo de MapLibre.
  * MapLibre acepta tanto una URL (string) como un objeto de estilo.
  */
-function buildStyle(key: string, style: string): string | maplibregl.StyleSpecification {
+function buildStyle(key: string, style: string, theme: 'dark' | 'light'): string | maplibregl.StyleSpecification {
   const isMapbox = /^(pk|sk)\./.test(key.trim());
+  // El mapa base sigue el tema de la app (claro/oscuro), salvo satélite (siempre foto).
+  const base = style === 'satellite' ? 'satellite' : theme;
   if (isMapbox) {
-    const id = ({ dark: 'dark-v11', satellite: 'satellite-streets-v12', streets: 'streets-v12' } as Record<string, string>)[style] ?? 'dark-v11';
+    const id = ({ dark: 'dark-v11', light: 'light-v11', satellite: 'satellite-streets-v12' } as Record<string, string>)[base] ?? 'dark-v11';
     return {
       version: 8,
       sources: { base: { type: 'raster', tiles: [`https://api.mapbox.com/styles/v1/mapbox/${id}/tiles/512/{z}/{x}/{y}@2x?access_token=${encodeURIComponent(key)}`], tileSize: 512, attribution: '© Mapbox © OpenStreetMap' } },
       layers: [{ id: 'base', type: 'raster', source: 'base' }],
     };
   }
-  const id = ({ dark: 'dataviz-dark', satellite: 'hybrid', streets: 'streets-v2' } as Record<string, string>)[style] ?? 'dataviz-dark';
+  const id = ({ dark: 'dataviz-dark', light: 'dataviz', satellite: 'hybrid' } as Record<string, string>)[base] ?? 'dataviz-dark';
   return `https://api.maptiler.com/maps/${id}/style.json?key=${encodeURIComponent(key)}`;
 }
 
@@ -67,6 +69,7 @@ interface Props {
   live: Record<number, LiveNode>;
   maptilerKey: string;
   mapStyle: string;
+  theme: 'dark' | 'light';
   selectedNodeId: number | null;
   onSelectNode: (id: number) => void;
   onSelectEdge: (id: number) => void;
@@ -127,10 +130,11 @@ function paintMarker(el: HTMLElement, node: ApiNode, live: LiveNode | undefined,
   }
 }
 
-export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, selectedNodeId, onSelectNode, onSelectEdge, onChanged, onHelp }: Props) {
+export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, theme, selectedNodeId, onSelectNode, onSelectEdge, onChanged, onHelp }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement }>>(new Map());
+  const clusterMarkersRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement }>>(new Map());
   const edgeLabelsRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement }>>(new Map());
   const loadedRef = useRef(false);
   // refs para leer datos frescos dentro de handlers de MapLibre
@@ -139,6 +143,78 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
   const cbRef = useRef({ onSelectNode, onSelectEdge, onChanged });
   cbRef.current = { onSelectNode, onSelectEdge, onChanged };
   const [ready, setReady] = useState(false);
+
+  // --- agrupar equipos cercanos en píxeles (clustering por zoom) ---
+  // Al alejar, los markers que quedan a < CLUSTER_PX se reúnen en una burbuja con el nº total.
+  const recluster = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const { nodes, live, edges } = dataRef.current;
+    const eff = computeEffCoords(nodes);
+    const pts = nodes.map((n) => { const c = eff.get(n.id); return c ? { n, c, p: map.project([c.lng, c.lat]) } : null; }).filter(Boolean) as { n: ApiNode; c: { lat: number; lng: number }; p: { x: number; y: number } }[];
+
+    const CLUSTER_PX = 46;
+    const used = new Set<number>();
+    const clusteredIds = new Set<number>();
+    const bubbles: { key: number; lng: number; lat: number; count: number; worst: string }[] = [];
+    for (let i = 0; i < pts.length; i++) {
+      if (used.has(i)) continue;
+      const group = [pts[i]]; used.add(i);
+      for (let j = i + 1; j < pts.length; j++) {
+        if (used.has(j)) continue;
+        const dx = pts[i].p.x - pts[j].p.x, dy = pts[i].p.y - pts[j].p.y;
+        if (dx * dx + dy * dy < CLUSTER_PX * CLUSTER_PX) { group.push(pts[j]); used.add(j); }
+      }
+      if (group.length <= 1) continue;
+      const ids = group.map((g) => g.n.id);
+      ids.forEach((id) => clusteredIds.add(id));
+      const lng = group.reduce((a, g) => a + g.c.lng, 0) / group.length;
+      const lat = group.reduce((a, g) => a + g.c.lat, 0) / group.length;
+      let worst = 'unknown', total = 0;
+      for (const g of group) {
+        const b = badgeFor(g.n, nodes, live);
+        const s = b ? b.worst : effStatus(g.n, live[g.n.id]);
+        if ((STATUS_RANK[s] ?? 0) >= (STATUS_RANK[worst] ?? 0)) worst = s;
+        total += b ? Math.max(1, b.count) : 1; // un contenedor cuenta por sus miembros
+      }
+      bubbles.push({ key: Math.min(...ids), lng, lat, count: total, worst });
+    }
+
+    // ocultar markers de nodo que quedaron dentro de una burbuja
+    for (const [id, entry] of markersRef.current) entry.el.style.display = clusteredIds.has(id) ? 'none' : '';
+    // ocultar la etiqueta de distancia si algún extremo está agrupado
+    for (const [eid, lbl] of edgeLabelsRef.current) {
+      const e = edges.find((x) => x.id === eid);
+      lbl.el.style.display = e && (clusteredIds.has(e.source_id) || clusteredIds.has(e.target_id)) ? 'none' : '';
+    }
+    // reconciliar burbujas de cluster
+    const cm = clusterMarkersRef.current;
+    const seen = new Set<number>();
+    for (const b of bubbles) {
+      seen.add(b.key);
+      let entry = cm.get(b.key);
+      if (!entry) {
+        const el = document.createElement('div');
+        el.className = 'geo-cluster';
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const m = mapRef.current; if (!m) return;
+          m.easeTo({ center: [Number(el.dataset.lng), Number(el.dataset.lat)], zoom: Math.min(18, m.getZoom() + 2) });
+        });
+        entry = { marker: new maplibregl.Marker({ element: el }).setLngLat([b.lng, b.lat]).addTo(map), el };
+        cm.set(b.key, entry);
+      } else {
+        entry.marker.setLngLat([b.lng, b.lat]);
+      }
+      const col = HEALTH_HEX[b.worst] ?? HEALTH_HEX.unknown;
+      entry.el.dataset.lng = String(b.lng); entry.el.dataset.lat = String(b.lat);
+      entry.el.textContent = String(b.count);
+      entry.el.style.borderColor = col;
+      entry.el.style.color = col;
+      entry.el.style.boxShadow = `0 0 0 4px ${col}22, 0 4px 14px rgba(0,0,0,.45)`;
+    }
+    for (const [key, entry] of cm) if (!seen.has(key)) { entry.marker.remove(); cm.delete(key); }
+  }, []);
 
   // --- crear el mapa una vez ---
   useEffect(() => {
@@ -149,7 +225,7 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
       : [-74.5, 4.6]; // Colombia por defecto
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: buildStyle(maptilerKey, mapStyle),
+      style: buildStyle(maptilerKey, mapStyle, theme),
       center,
       zoom: placed.length ? 12 : 6,
       attributionControl: false,
@@ -174,6 +250,7 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
       });
       map.on('mouseenter', 'edges-base', () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', 'edges-base', () => { map.getCanvas().style.cursor = ''; });
+      map.on('move', recluster); // reagrupar al hacer zoom / pan
       map.resize(); // el contenedor pudo iniciar sin tamaño (lazy mount / flex)
       // Sin nodos ubicados: centrar en la ubicación del dispositivo (si el navegador la da).
       if (!placed.length && navigator.geolocation) {
@@ -199,9 +276,9 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
       try { map.setPaintProperty('edges-flow', 'line-dasharray', dashSeq[step]); } catch { /* estilo recargando */ }
     }, 90);
 
-    return () => { clearInterval(anim); ro.disconnect(); map.remove(); mapRef.current = null; loadedRef.current = false; markersRef.current.clear(); edgeLabelsRef.current.clear(); setReady(false); };
-    // Recrear el mapa si cambia la key o el estilo
-  }, [maptilerKey, mapStyle]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { clearInterval(anim); ro.disconnect(); map.remove(); mapRef.current = null; loadedRef.current = false; markersRef.current.clear(); clusterMarkersRef.current.clear(); edgeLabelsRef.current.clear(); setReady(false); };
+    // Recrear el mapa si cambia la key, el estilo o el tema (claro/oscuro)
+  }, [maptilerKey, mapStyle, theme]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- reconciliar markers cuando cambian los nodos (posición/alta/baja) ---
   useEffect(() => {
@@ -236,7 +313,8 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
       paintMarker(entry.el, n, dataRef.current.live[n.id], badgeFor(n, dataRef.current.nodes, dataRef.current.live));
     }
     for (const [id, entry] of markers) if (!seen.has(id)) { entry.marker.remove(); markers.delete(id); }
-  }, [nodes, ready]);
+    recluster(); // reagrupar tras altas/bajas/movimientos
+  }, [nodes, ready, recluster]);
 
   // --- actualizar visual de markers + líneas cuando cambia el estado en vivo ---
   useEffect(() => {
@@ -282,7 +360,8 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
     for (const [id, lbl] of labels) if (!seenL.has(id)) { lbl.marker.remove(); labels.delete(id); }
     const src = map.getSource('edges') as maplibregl.GeoJSONSource | undefined;
     src?.setData({ type: 'FeatureCollection', features });
-  }, [live, nodes, edges, ready]);
+    recluster(); // recolorear/ocultar según agrupación
+  }, [live, nodes, edges, ready, recluster]);
 
   // Resaltar el camino PON OLT→ONU al seleccionar una ONU.
   useEffect(() => {

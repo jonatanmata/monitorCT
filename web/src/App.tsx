@@ -236,7 +236,7 @@ export default function App() {
             <Suspense fallback={<div className="empty-hint" style={{ padding: 30 }}>Cargando mapa…</div>}>
               <GeoMap
                 nodes={nodes} edges={edges} live={live}
-                maptilerKey={mapCfg.key} mapStyle={mapCfg.style}
+                maptilerKey={mapCfg.key} mapStyle={mapCfg.style} theme={theme}
                 selectedNodeId={selectedNodeId}
                 onSelectNode={(id) => { setSelectedNodeId(id); setSelectedEdgeId(null); }}
                 onSelectEdge={(id) => { setSelectedEdgeId(id); setSelectedNodeId(null); }}

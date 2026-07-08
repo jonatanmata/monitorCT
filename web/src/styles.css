@@ -336,12 +336,15 @@ select.inp { cursor: pointer; }
 .geo-ring { position: absolute; left: -3px; top: -3px; width: 34px; height: 34px; border-radius: 9px; pointer-events: none; }
 .geo-ico { width: 28px; height: 28px; border-radius: 8px; background: var(--panel); border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .geo-dot { position: absolute; left: 20px; top: -3px; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--panel); }
-.geo-name { font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: 600; color: var(--text); background: rgba(10,14,22,.72); padding: 2px 6px; border-radius: 6px; white-space: nowrap; }
+.geo-name { font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: 600; color: var(--text); background: var(--panel); border: 1px solid var(--border2); padding: 2px 6px; border-radius: 6px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
 .geo-badge { position: absolute; left: 20px; bottom: -5px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; border: 1.5px solid var(--panel); color: #fff; font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; line-height: 1; }
 /* etiqueta de distancia sobre cada enlace del mapa (la fibra se resalta) */
-.geo-dist { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: var(--text2); background: rgba(10,14,22,.78); border: 1px solid var(--border2); padding: 1px 6px; border-radius: 20px; white-space: nowrap; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.geo-dist { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: var(--text2); background: var(--panel); border: 1px solid var(--border2); padding: 1px 6px; border-radius: 20px; white-space: nowrap; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
 .geo-dist:hover { color: var(--text); border-color: var(--accent); }
-.geo-dist.is-fiber { color: #f5b13d; border-color: #f5b13d66; background: rgba(30,22,8,.82); }
+.geo-dist.is-fiber { color: var(--warn); border-color: var(--warn); }
+/* burbuja de agrupación de equipos (clustering al alejar el zoom) */
+.geo-cluster { min-width: 34px; height: 34px; padding: 0 6px; border-radius: 20px; background: var(--panel); border: 2px solid var(--muted); color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; cursor: pointer; line-height: 1; }
+.geo-cluster:hover { filter: brightness(1.08); }
 .geo-unplaced {
   position: absolute; top: 14px; right: 14px; width: 220px; max-height: 60%; z-index: 5;
   background: var(--bg2); border: 1px solid var(--border2); border-radius: 11px; box-shadow: var(--shadow);
