@@ -93,13 +93,18 @@ export function Icon({
 }
 
 /** Sección de la app (navegación de la barra lateral). */
-export type Section = 'topology' | 'map' | 'alerts' | 'saturation' | 'ai' | 'telegram' | 'settings';
+export type Section = 'topology' | 'racktower' | 'map' | 'alerts' | 'saturation' | 'ai' | 'telegram' | 'settings';
 
 export const SECTION_META: Record<Section, { title: string; subtitle: string; icon: string }> = {
   topology: {
     title: 'Topología',
     subtitle: 'Mapa en vivo de la red — arrastra, conecta y rompe enlaces',
     icon: 'M5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM19 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM19 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 5h10M6.5 6.8L17.5 15.5M12 7v10',
+  },
+  racktower: {
+    title: 'Rack y Torre',
+    subtitle: 'Infraestructura física — equipos, puertos y cableado',
+    icon: 'M4 3h16v18H4zM4 8h16M4 13h16M4 18h16M7 5.5h.01M7 10.5h.01M7 15.5h.01',
   },
   map: {
     title: 'Mapa',
@@ -146,6 +151,10 @@ export const HELP: Record<string, { title: string; body: string }> = {
   map: {
     title: 'Mapa geográfico',
     body: 'Ubica tus equipos en un mapa real por coordenadas. Son los MISMOS equipos de la topología, con su estado en vivo (colores, anillo pulsante) y los enlaces animados. Arrastra un marcador para colocarlo; usa el panel «Sin ubicar» para los que aún no tienen posición. Clic en un equipo o enlace abre su panel. Requiere una API key gratuita de MapTiler (se configura en Ajustes → Mapa).',
+  },
+  racktower: {
+    title: 'Rack y Torre — vista física',
+    body: 'La misma red de la topología, vista por dentro: cada rack es un gabinete con sus equipos apilados y sus puertos; cada torre lleva sus radios a distintas alturas. Selecciona un rack o torre y añade equipos desde la barra. Conecta un cable haciendo clic en un puerto y luego en otro: ese cable ES un enlace de la topología (con puerto origen y destino), así que aparece también en el mapa y alimenta el cálculo PON. Arrastra los equipos para reordenarlos, enciende/apaga con el botón de power, y doble clic para renombrar.',
   },
   alerts: {
     title: 'Alertas',

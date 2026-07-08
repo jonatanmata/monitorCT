@@ -14,10 +14,11 @@ import { Icon, SECTION_META, type Section } from './ui/meta';
 import type { ApiNode, ApiEdge, LiveNode } from './types';
 
 const GeoMap = lazy(() => import('./map/GeoMap'));
+const RackTowerView = lazy(() => import('./rack/RackTowerView'));
 
 type ChatHandler = (event: string, data: { sessionId: string; text?: string; name?: string; error?: string }) => void;
 
-const NAV: Section[] = ['topology', 'map', 'alerts', 'saturation', 'ai', 'telegram', 'settings'];
+const NAV: Section[] = ['topology', 'racktower', 'map', 'alerts', 'saturation', 'ai', 'telegram', 'settings'];
 
 // Equipos de infraestructura cuya caída dispara la alarma de emergencia sonora.
 const INFRA_TYPES = new Set<string>(['mikrotik', 'router', 'ptp-mimosa', 'ap-ubiquiti', 'olt']);
@@ -33,6 +34,7 @@ export default function App() {
   const [now, setNow] = useState(new Date());
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
+  const [focusContainer, setFocusContainer] = useState<number | null>(null);
   const [alertRefresh, setAlertRefresh] = useState(0);
   const [openAlerts, setOpenAlerts] = useState(0);
   const [focusStart, setFocusStart] = useState<number | null>(null);
@@ -214,8 +216,21 @@ export default function App() {
               onSelectEdge={(id) => { setSelectedEdgeId(id); setSelectedNodeId(null); }}
               onTopologyChanged={reload}
               onHelp={() => setHelpKey('palette')}
-              onOpenContainer={(id) => { setSelectedNodeId(id); setSelectedEdgeId(null); }}
+              onOpenContainer={(id) => { setFocusContainer(id); setSection('racktower'); }}
             />
+          )}
+          {section === 'racktower' && (
+            <Suspense fallback={<div className="empty-hint" style={{ padding: 30 }}>Cargando vista física…</div>}>
+              <RackTowerView
+                nodes={nodes} edges={edges} live={live}
+                focusContainer={focusContainer}
+                selectedNodeId={selectedNodeId} selectedEdgeId={selectedEdgeId}
+                onSelectNode={(id) => { setSelectedNodeId(id); setSelectedEdgeId(null); }}
+                onSelectEdge={(id) => { setSelectedEdgeId(id); setSelectedNodeId(null); }}
+                onChanged={reload}
+                onHelp={() => setHelpKey('racktower')}
+              />
+            </Suspense>
           )}
           {section === 'map' && (
             <Suspense fallback={<div className="empty-hint" style={{ padding: 30 }}>Cargando mapa…</div>}>
@@ -238,15 +253,15 @@ export default function App() {
         </div>
       </main>
 
-      {/* DRAWERS — funcionan tanto desde la topología como desde el mapa */}
-      {(section === 'topology' || section === 'map') && selectedNode && (
+      {/* DRAWERS — funcionan desde la topología, el mapa y la vista física */}
+      {(section === 'topology' || section === 'map' || section === 'racktower') && selectedNode && (
         <NodeDrawer
           node={selectedNode} live={live[selectedNode.id] ?? null} nodes={nodes} liveAll={live}
           onChanged={reload} onDeleted={() => { setSelectedNodeId(null); reload(); }}
           onClose={() => setSelectedNodeId(null)} onHelp={(k) => setHelpKey(k)}
         />
       )}
-      {(section === 'topology' || section === 'map') && selectedEdge && (
+      {(section === 'topology' || section === 'map' || section === 'racktower') && selectedEdge && (
         <EdgeDrawer
           edge={selectedEdge} nodes={nodes}
           onChanged={reload} onDeleted={() => { setSelectedEdgeId(null); reload(); }}
