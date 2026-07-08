@@ -101,10 +101,15 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
       rackViews.push({ node: rk, x: base.x, y: base.y, h, devices: devViews });
     });
 
-    const towerViews: { node: ApiNode; x: number; y: number; cx: number; apexY: number; baseY: number; rails: string; braces: string; radios: { node: ApiNode; y: number; x: number }[] }[] = [];
+    const RW = 118, SLOT_H = 44; // separación vertical por radio (> alto de la tarjeta 40px)
+    const towerViews: { node: ApiNode; x: number; y: number; twH: number; cx: number; apexY: number; baseY: number; rails: string; braces: string; radios: { node: ApiNode; y: number; x: number; mountLeft: number }[] }[] = [];
     towers.forEach((tw, i) => {
       const base = phys(tw, { x: 340 + racks.length * 360 + i * 240, y: 90 });
-      const cx = base.x + G.towerW / 2, apexY = base.y + 16, baseY = base.y + G.towerH - 4;
+      const rads = membersOf(tw.id);
+      // Alto dinámico: crece con los radios (mitad por lado) para que no se amontonen.
+      const perSide = Math.ceil(rads.length / 2);
+      const twH = Math.max(G.towerH, perSide * SLOT_H + 56);
+      const cx = base.x + G.towerW / 2, apexY = base.y + 16, baseY = base.y + twH - 4;
       const baseHalf = G.towerW * 0.4, topHalf = 7;
       let braces = '';
       const segs = 8;
@@ -115,18 +120,27 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
         braces += `M ${cx - l0} ${y0} L ${cx + l1} ${y1} M ${cx + l0} ${y0} L ${cx - l1} ${y1} M ${cx - l1} ${y1} L ${cx + l1} ${y1} `;
       }
       const rails = `M ${cx - baseHalf} ${baseY} L ${cx - topHalf} ${apexY} M ${cx + baseHalf} ${baseY} L ${cx + topHalf} ${apexY}`;
-      const rads = membersOf(tw.id);
-      const radViews = rads.map((r, idx) => {
-        const f = metaOf(r).mountF ?? (0.85 - idx * 0.22);
-        const y = baseY - Math.max(0.06, Math.min(0.95, f)) * (baseY - apexY);
+      // Repartir en ambos lados (mitad y mitad, estable por id) y distribuir uniformemente por lado.
+      const byId = [...rads].sort((a, b) => a.id - b.id);
+      const side = new Map<number, 'L' | 'R'>(), sideK = new Map<number, number>(), cnt = { L: 0, R: 0 };
+      byId.forEach((r) => { const s = (metaOf(r).side === 'L' || metaOf(r).side === 'R') ? metaOf(r).side! : (cnt.R <= cnt.L ? 'R' : 'L'); side.set(r.id, s); sideK.set(r.id, cnt[s]++); });
+      const radViews = rads.map((r) => {
+        const s = side.get(r.id)!, k = sideK.get(r.id)!;
+        // Con mountF manual, respeta la altura; si no, apila de arriba abajo con paso fijo (sin solaparse).
+        const mf = metaOf(r).mountF;
+        const y = mf != null
+          ? baseY - Math.max(0.06, Math.min(0.95, mf)) * (baseY - apexY)
+          : apexY + 26 + k * SLOT_H;
         const half = topHalf + (baseHalf - topHalf) * (baseY - y) / (baseY - apexY);
-        const rx = cx + half + 14;
-        anchors.set(`${r.id}:poe`, { x: rx - 4, y: y + 20, color: '#57c7d4' });
+        const cardLeft = s === 'R' ? cx + half + 14 : cx - half - 14 - RW;
+        const mountLeft = s === 'R' ? cx + half : cardLeft + RW; // tramo de mástil hacia el radio
+        const poeX = s === 'R' ? cardLeft - 4 : cardLeft + RW + 4; // PoE hacia la torre
+        anchors.set(`${r.id}:poe`, { x: poeX, y: y + 20, color: '#57c7d4' });
         // Pin de aire (RF) hacia el par en otra torre: sobre el radio (lado que irradia).
-        anchors.set(`${r.id}:air`, { x: rx + 118 / 2, y: y - 10, color: '#8b5bff' });
-        return { node: r, y, x: rx };
+        anchors.set(`${r.id}:air`, { x: cardLeft + RW / 2, y: y - 10, color: '#8b5bff' });
+        return { node: r, y, x: cardLeft, mountLeft };
       });
-      towerViews.push({ node: tw, x: base.x, y: base.y, cx, apexY, baseY, rails, braces, radios: radViews });
+      towerViews.push({ node: tw, x: base.x, y: base.y, twH, cx, apexY, baseY, rails, braces, radios: radViews });
     });
 
     // Egresos: nodos sueltos conectados a algún equipo dentro de un rack/torre.
@@ -356,7 +370,7 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
                   const st = effStatus(d.node, live[d.node.id]);
                   const meta = typeMeta(d.node.type);
                   return (
-                    <div key={d.node.id} data-obj={d.node.id} className="rt-device" style={{ left: rk.x, top: d.y, width: G.rackW, height: d.h, opacity: d.node.enabled ? 1 : 0.6 }}
+                    <div key={d.node.id} data-obj={d.node.id} className="rt-device" title={d.node.name} style={{ left: rk.x, top: d.y, width: G.rackW, height: d.h, opacity: d.node.enabled ? 1 : 0.6 }}
                       onPointerDown={(e) => dragDevice(rk.node.id, d.node.id, e)}
                       onClick={(e) => { e.stopPropagation(); clickSelect(d.node.id); }}>
                       <span className="rt-bezel" style={{ background: d.node.enabled ? meta.color : '#2a3346', boxShadow: d.node.enabled ? `0 0 8px ${meta.color}66` : 'none' }} />
@@ -379,7 +393,7 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
             const selT = sel?.kind === 'tower' && sel.id === t.node.id;
             return (
               <div key={t.node.id}>
-                <div className="rt-hit" style={{ left: t.x, top: t.y, width: G.towerW, height: G.towerH }} onClick={(e) => { e.stopPropagation(); setSel({ kind: 'tower', id: t.node.id }); clickSelect(t.node.id); }} />
+                <div className="rt-hit" style={{ left: t.x, top: t.y, width: G.towerW, height: t.twH }} onClick={(e) => { e.stopPropagation(); setSel({ kind: 'tower', id: t.node.id }); clickSelect(t.node.id); }} />
                 <div data-obj={t.node.id} className="rt-tower-head" style={{ left: t.x - 4, top: t.y - 24, borderColor: selT ? 'var(--accent)' : '#2a3550', background: selT ? 'var(--accentSoft)' : 'rgba(255,255,255,.04)' }}
                   onPointerDown={(e) => dragObject(t.node, { x: t.x, y: t.y }, e)}
                   onClick={(e) => { e.stopPropagation(); setSel({ kind: 'tower', id: t.node.id }); clickSelect(t.node.id); }}>
@@ -393,8 +407,8 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
                   const meta = typeMeta(r.node.type);
                   return (
                     <div key={r.node.id}>
-                      <div className="rt-mount" style={{ left: t.cx, top: r.y + 18, width: r.x - t.cx }} />
-                      <div data-obj={r.node.id} className="rt-radio" style={{ left: r.x, top: r.y, borderColor: r.node.enabled ? `${meta.color}66` : '#222b3d', opacity: r.node.enabled ? 1 : 0.65 }}
+                      <div className="rt-mount" style={{ left: r.mountLeft, top: r.y + 18, width: 14 }} />
+                      <div data-obj={r.node.id} className="rt-radio" title={r.node.name} style={{ left: r.x, top: r.y, borderColor: r.node.enabled ? `${meta.color}66` : '#222b3d', opacity: r.node.enabled ? 1 : 0.65 }}
                         onPointerDown={(e) => dragRadio(r.node, t, e)}
                         onClick={(e) => { e.stopPropagation(); clickSelect(r.node.id); }}>
                         <span className="rt-radio-ico" style={{ color: r.node.enabled ? meta.color : '#556' }}><Icon path={ICONS[meta.icon]} size={14} strokeWidth={1.7} /></span>

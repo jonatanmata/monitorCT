@@ -72,9 +72,10 @@ export interface NodeMeta {
   rxSensitivityDbm?: number;
   // Contenedor (rack/torre): posición en el lienzo físico.
   phys?: PhysPos;
-  // Miembro de rack: orden del slot (arriba→abajo). Radio de torre: altura 0..1.
+  // Miembro de rack: orden del slot (arriba→abajo). Radio de torre: altura 0..1 y lado (L/R).
   slot?: number;
   mountF?: number;
+  side?: 'L' | 'R';
   // Conteo de puertos (auto-derivado del tipo, ajustable por equipo).
   ponPorts?: number;
   switchPorts?: number;
