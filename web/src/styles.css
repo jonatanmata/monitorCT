@@ -264,6 +264,7 @@ select.inp { cursor: pointer; }
 
 .rt-pin { position: absolute; z-index: 6; border-radius: 2px; background: #0a0d14; border: 1.5px solid; display: flex; align-items: center; justify-content: center; cursor: crosshair; }
 .rt-pin-poe { width: 18px; height: 14px; border-radius: 3px; }
+.rt-pin-air { width: 18px; height: 18px; border-radius: 50%; background: var(--bg); }
 .rt-pin-eg { width: 18px; height: 18px; border-radius: 5px; background: var(--bg); }
 .rt-pin-dot { width: 5px; height: 5px; border-radius: 50%; }
 .rt-pin-tag { position: absolute; top: 13px; left: 50%; transform: translateX(-50%); font-size: 7px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; pointer-events: none; }

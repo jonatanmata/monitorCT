@@ -32,6 +32,7 @@ function effStatus(n: ApiNode, live: LiveNode | undefined): string {
   return s === 'up' && live?.bwNear ? 'warning' : s;
 }
 function mediumFor(a: ApiNode, b: ApiNode, pa?: Port, pb?: Port): string {
+  if (pa?.kind === 'wireless' || pb?.kind === 'wireless') return 'wireless'; // enlace de aire radio↔radio
   const fiber = ['olt', 'onu', 'nap'].includes(a.type) || ['olt', 'onu', 'nap'].includes(b.type) || pa?.kind === 'pon' || pb?.kind === 'pon';
   return fiber ? 'fiber' : 'copper';
 }
@@ -113,6 +114,8 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
         const half = topHalf + (baseHalf - topHalf) * (baseY - y) / (baseY - apexY);
         const rx = cx + half + 14;
         anchors.set(`${r.id}:poe`, { x: rx - 4, y: y + 20, color: '#57c7d4' });
+        // Pin de aire (RF) hacia el par en otra torre: sobre el radio (lado que irradia).
+        anchors.set(`${r.id}:air`, { x: rx + 118 / 2, y: y - 10, color: '#8b5bff' });
         return { node: r, y, x: rx };
       });
       towerViews.push({ node: tw, x: base.x, y: base.y, cx, apexY, baseY, rails, braces, radios: radViews });
@@ -433,16 +436,21 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
               </div>
             );
           })))}
-          {model.towerViews.flatMap((t) => t.radios.map((r) => {
-            const pid = `${r.node.id}:poe`;
-            const active = linkFrom?.nodeId === r.node.id && linkFrom?.portId === 'poe';
-            const a = model.anchors.get(pid)!;
-            return (
-              <div key={pid} data-pin="1" className="rt-pin rt-pin-poe" style={{ left: a.x - 9, top: a.y - 7, borderColor: active ? 'var(--accent)' : '#57c7d4', boxShadow: active ? '0 0 0 3px var(--accentSoft)' : '0 0 5px #57c7d488' }}
+          {model.towerViews.flatMap((t) => t.radios.flatMap((r) => {
+            const poeActive = linkFrom?.nodeId === r.node.id && linkFrom?.portId === 'poe';
+            const airActive = linkFrom?.nodeId === r.node.id && linkFrom?.portId === 'air';
+            const poe = model.anchors.get(`${r.node.id}:poe`)!;
+            const air = model.anchors.get(`${r.node.id}:air`)!;
+            return [
+              <div key={`${r.node.id}:poe`} data-pin="1" className="rt-pin rt-pin-poe" style={{ left: poe.x - 9, top: poe.y - 7, borderColor: poeActive ? 'var(--accent)' : '#57c7d4', boxShadow: poeActive ? '0 0 0 3px var(--accentSoft)' : '0 0 5px #57c7d488' }}
                 title={`${r.node.name}: PoE`} onClick={(e) => { e.stopPropagation(); clickPort(r.node.id, 'poe'); }}>
                 <span className="rt-pin-dot" style={{ background: r.node.enabled ? '#57c7d4' : '#2b3444' }} />
-              </div>
-            );
+              </div>,
+              <div key={`${r.node.id}:air`} data-pin="1" className="rt-pin rt-pin-air" style={{ left: air.x - 9, top: air.y - 9, borderColor: airActive ? 'var(--accent)' : '#8b5bff', boxShadow: airActive ? '0 0 0 3px var(--accentSoft)' : '0 0 6px #8b5bff88' }}
+                title={`${r.node.name}: enlace de aire (RF) — conéctalo al radio de otra torre`} onClick={(e) => { e.stopPropagation(); clickPort(r.node.id, 'air'); }}>
+                <span className="rt-pin-dot" style={{ background: r.node.enabled ? '#8b5bff' : '#2b3444' }} />
+              </div>,
+            ];
           }))}
           {model.egViews.map((e) => {
             const pid = `${e.node.id}:_`;

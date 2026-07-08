@@ -1,7 +1,7 @@
 import type { ApiNode, NodeMeta, NodeType } from './types';
 
-/** Tipo eléctrico/óptico del puerto (define color e ícono del pin). */
-export type PortKind = 'rj45' | 'sfp' | 'pon' | 'poe' | 'lan';
+/** Tipo eléctrico/óptico/RF del puerto (define color e ícono del pin). */
+export type PortKind = 'rj45' | 'sfp' | 'pon' | 'poe' | 'lan' | 'wireless';
 
 export interface Port {
   /** Id estable, guardado en edge.source_port/target_port (ej. 'pon1', 'e1', 'o3'). */
@@ -88,8 +88,8 @@ export function portsForType(node: ApiNode): Port[] {
     case 'ptp-mimosa':
     case 'ap-ubiquiti':
     case 'litebeam':
-      // Radios: alimentación PoE (subida) + LAN de datos.
-      return [p('poe', 'PoE / Data', 'PoE', 'poe', true), p('lan', 'LAN', 'LAN', 'rj45')];
+      // Radios: enlace de aire (RF) hacia el par en otra torre + alimentación PoE + LAN.
+      return [p('air', 'Enlace aire (RF)', 'AIR', 'wireless'), p('poe', 'PoE / Data', 'PoE', 'poe', true), p('lan', 'LAN', 'LAN', 'rj45')];
     case 'gateway-isp':
       return [p('out', 'Salida', 'OUT', 'sfp', true)];
     case 'monitor':
@@ -112,6 +112,7 @@ export function findPort(node: ApiNode, portId: string): Port | undefined {
 
 /** Color del pin/cable según el tipo de puerto. */
 export function portColor(kind: PortKind): string {
+  if (kind === 'wireless') return '#8b5bff'; // enlace de aire (RF)
   if (kind === 'poe') return '#57c7d4';
   if (kind === 'pon' || kind === 'sfp' || kind === 'lan') return '#f5b13d';
   return '#4c8dff'; // rj45
