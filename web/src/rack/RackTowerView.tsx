@@ -271,7 +271,10 @@ export default function RackTowerView({ nodes, edges, live, focusContainer, sele
   // --- pan del lienzo ---
   const panStart = useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('[data-obj]') || (e.target as HTMLElement).closest('[data-pin]')) return;
-    setSel(null); setLinkFrom(null);
+    setSel(null);
+    // Importante: NO cancelar el enlace en curso al mover el tablero. Así puedes
+    // arrastrar hasta la otra torre (aunque esté lejos) sin perder el puerto de origen.
+    // Se cancela con la ✕ del aviso o volviendo a pulsar el pin de origen.
     const sx = e.clientX, sy = e.clientY, p0 = pan;
     const move = (ev: PointerEvent) => setPan({ x: p0.x + (ev.clientX - sx), y: p0.y + (ev.clientY - sy) });
     const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
