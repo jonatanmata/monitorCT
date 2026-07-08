@@ -169,6 +169,10 @@ function paintTower(el: HTMLElement, container: ApiNode, members: ApiNode[], liv
     `</div>`;
 }
 
+// Encuadre recordado entre montajes (cambiar de sección/tema recrea el mapa; así no se
+// pierde el zoom/centro). Módulo-scope → sobrevive al desmontaje dentro de la sesión.
+let savedView: { center: [number, number]; zoom: number; bearing: number; pitch: number } | null = null;
+
 export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, theme, selectedNodeId, onSelectNode, onSelectEdge, onChanged, onHelp }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -260,14 +264,19 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, them
   useEffect(() => {
     if (!maptilerKey || !containerRef.current) return;
     const placed = nodes.filter((n) => n.lat != null && n.lng != null);
-    const center: [number, number] = placed.length
-      ? [placed.reduce((a, n) => a + n.lng!, 0) / placed.length, placed.reduce((a, n) => a + n.lat!, 0) / placed.length]
-      : [-74.5, 4.6]; // Colombia por defecto
+    // Restaurar el encuadre recordado (cambio de sección/tema); si no hay, centrar en los nodos.
+    const center: [number, number] = savedView
+      ? savedView.center
+      : placed.length
+        ? [placed.reduce((a, n) => a + n.lng!, 0) / placed.length, placed.reduce((a, n) => a + n.lat!, 0) / placed.length]
+        : [-74.5, 4.6]; // Colombia por defecto
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: buildStyle(maptilerKey, mapStyle, theme),
       center,
-      zoom: placed.length ? 12 : 6,
+      zoom: savedView ? savedView.zoom : placed.length ? 12 : 6,
+      bearing: savedView?.bearing ?? 0,
+      pitch: savedView?.pitch ?? 0,
       attributionControl: false,
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
@@ -275,6 +284,12 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, them
     const geolocate = new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: false, showUserLocation: true });
     map.addControl(geolocate, 'bottom-left');
     mapRef.current = map;
+
+    // Recordar el encuadre en cada movimiento/zoom para restaurarlo al recrear el mapa.
+    map.on('moveend', () => {
+      const c = map.getCenter();
+      savedView = { center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() };
+    });
 
     map.on('load', () => {
       loadedRef.current = true;
@@ -292,8 +307,8 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, them
       map.on('mouseleave', 'edges-base', () => { map.getCanvas().style.cursor = ''; });
       map.on('move', recluster); // reagrupar al hacer zoom / pan
       map.resize(); // el contenedor pudo iniciar sin tamaño (lazy mount / flex)
-      // Sin nodos ubicados: centrar en la ubicación del dispositivo (si el navegador la da).
-      if (!placed.length && navigator.geolocation) {
+      // Sin nodos ubicados y sin encuadre recordado: centrar en la ubicación del dispositivo.
+      if (!savedView && !placed.length && navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) => map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 14 }),
           () => { /* permiso denegado: se queda en el centro por defecto */ },
