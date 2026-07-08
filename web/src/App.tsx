@@ -237,7 +237,7 @@ export default function App() {
       {/* DRAWERS — funcionan tanto desde la topología como desde el mapa */}
       {(section === 'topology' || section === 'map') && selectedNode && (
         <NodeDrawer
-          node={selectedNode} live={live[selectedNode.id] ?? null}
+          node={selectedNode} live={live[selectedNode.id] ?? null} nodes={nodes} liveAll={live}
           onChanged={reload} onDeleted={() => { setSelectedNodeId(null); reload(); }}
           onClose={() => setSelectedNodeId(null)} onHelp={(k) => setHelpKey(k)}
         />

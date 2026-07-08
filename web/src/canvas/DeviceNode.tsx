@@ -1,6 +1,6 @@
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import type { ApiNode, LiveNode } from '../types';
-import { Icon, ICONS, TYPE_META } from '../ui/meta';
+import { Icon, ICONS, typeMeta } from '../ui/meta';
 
 export type DeviceNodeData = {
   node: ApiNode;
@@ -28,7 +28,7 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
   // Cerca del techo de ancho de banda: la antena se resalta en naranja aunque el ping esté "up".
   const bwNear = !isMonitor && !!live?.bwNear && rawStatus !== 'down';
   const status = bwNear && rawStatus === 'up' ? 'warning' : rawStatus;
-  const meta = TYPE_META[node.type];
+  const meta = typeMeta(node.type);
   const color = STATUS_COLOR[status];
 
   const metrics: { k: string; v: string }[] = [];

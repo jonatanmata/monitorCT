@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ApiNode, ApiEdge, LiveNode, NodeType } from '../types';
-import { NODE_TYPE_LABELS, ADDABLE_TYPES } from '../types';
+import { NODE_TYPE_LABELS, ADDABLE_TYPES, CONTAINER_TYPES } from '../types';
 import { api } from '../api';
-import { Icon, ICONS, TYPE_META } from './meta';
+import { Icon, ICONS, TYPE_META, typeMeta } from './meta';
 import { Sparkline } from './Sparkline';
 import { RouterosFlow } from './RouterosFlow';
 import { ConfigAudit } from './ConfigAudit';
@@ -14,7 +14,7 @@ const STATUS = {
   unknown: { label: 'Sin datos', color: 'var(--muted)', soft: 'var(--panel3)' },
 } as const;
 
-type Tab = 'config' | 'metrics' | 'flow' | 'audit' | 'tdr';
+type Tab = 'config' | 'metrics' | 'flow' | 'audit' | 'tdr' | 'inside';
 
 interface CablePair { pair: string; status: string; distanceM: number | null }
 interface CableIface { name: string; supported: boolean; status?: string; note?: string; pairs?: CablePair[] }
@@ -45,12 +45,14 @@ function DrawerChrome({ icon, color, name, statusChip, sub, onClose, children }:
   );
 }
 
-export function NodeDrawer({ node, live, onChanged, onDeleted, onClose, onHelp }: {
-  node: ApiNode; live: LiveNode | null; onChanged: () => void; onDeleted: () => void; onClose: () => void; onHelp: (key: string) => void;
+export function NodeDrawer({ node, live, nodes = [], liveAll = {}, onChanged, onDeleted, onClose, onHelp }: {
+  node: ApiNode; live: LiveNode | null; nodes?: ApiNode[]; liveAll?: Record<number, LiveNode>;
+  onChanged: () => void; onDeleted: () => void; onClose: () => void; onHelp: (key: string) => void;
 }) {
-  const meta = TYPE_META[node.type];
+  const meta = typeMeta(node.type);
   const isMonitor = node.type === 'monitor';
   const isMikrotik = node.type === 'mikrotik';
+  const isContainer = CONTAINER_TYPES.includes(node.type);
   const isRouterLike = isMikrotik || node.type === 'router';
   const isSnmp = ['ptp-mimosa', 'ap-ubiquiti', 'litebeam', 'cliente', 'router'].includes(node.type);
   const status = isMonitor ? 'up' : (live?.status ?? 'unknown');
@@ -105,8 +107,18 @@ export function NodeDrawer({ node, live, onChanged, onDeleted, onClose, onHelp }
     return [...new Set([...base, ...available])].slice(0, 8);
   }, [available]);
 
+  // Miembros del contenedor (para la pestaña «Interior»)
+  const members = useMemo(() => (isContainer ? nodes.filter((n) => n.containerId === node.id) : []), [isContainer, nodes, node.id]);
+  const memberWorst = useMemo(() => {
+    const rank = { down: 3, warning: 2, unknown: 1, up: 0 } as Record<string, number>;
+    let worst = 'unknown';
+    for (const m of members) { const s = liveAll[m.id]?.status ?? 'unknown'; if (rank[s] > rank[worst]) worst = s; }
+    return worst;
+  }, [members, liveAll]);
+
   const tabs: { k: Tab; label: string }[] = [{ k: 'config', label: 'Configuración' }];
-  if (!isMonitor) tabs.push({ k: 'metrics', label: 'Métricas' });
+  if (isContainer) tabs.push({ k: 'inside', label: `Interior (${members.length})` });
+  if (!isMonitor && !isContainer) tabs.push({ k: 'metrics', label: 'Métricas' });
   if (isRouterLike) tabs.push({ k: 'flow', label: 'Flujo RouterOS' });
   if (isMikrotik) tabs.push({ k: 'audit', label: 'Auditoría' });
   if (isMikrotik) tabs.push({ k: 'tdr', label: 'Cable TDR' });
@@ -129,11 +141,16 @@ export function NodeDrawer({ node, live, onChanged, onDeleted, onClose, onHelp }
                 Este es el PC de monitoreo, la raíz de tu red. Sus sondas a internet se configuran en Ajustes → «Targets de sonda del PC». Conéctalo al primer equipo tirando del punto azul de su borde derecho.
               </div>
             )}
+            {isContainer && (
+              <div className="status-line pending" style={{ marginTop: 0 }}>
+                {node.type === 'rack' ? 'Un rack agrupa los equipos de un gabinete.' : 'Una torre agrupa las antenas (PTP, sectoriales) de un sitio.'} Añade o quita equipos en la pestaña <b>Interior</b>. En el mapa, los miembros sin ubicación propia heredan la del contenedor.
+              </div>
+            )}
             <label className="field">
               <span className="field-label">Nombre</span>
               <input className="inp" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </label>
-            {!isMonitor && (
+            {!isMonitor && !isContainer && (
               <>
                 <label className="field">
                   <span className="field-label">Tipo</span>
@@ -169,15 +186,15 @@ export function NodeDrawer({ node, live, onChanged, onDeleted, onClose, onHelp }
 
             <div style={{ display: 'flex', gap: 9, marginTop: 4 }}>
               <button className="btn primary btn-block" style={{ flex: 1 }} onClick={save}>Guardar</button>
-              {!isMonitor && (
+              {!isMonitor && !isContainer && (
                 <button className="btn" onClick={test} disabled={testing}>
                   <Icon path={testing ? 'M21 12a9 9 0 1 1-6.2-8.5' : 'M22 12h-4l-3 9L9 3l-3 9H2'} size={16} strokeWidth={2} style={testing ? { animation: 'spin 1s linear infinite' } : undefined} />
                   {testing ? 'Probando…' : 'Probar conexión'}
                 </button>
               )}
-              <button className="btn" style={{ width: 40, color: 'var(--muted)' }} onClick={() => onHelp('conntest')}>!</button>
+              {!isContainer && <button className="btn" style={{ width: 40, color: 'var(--muted)' }} onClick={() => onHelp('conntest')}>!</button>}
             </div>
-            {!isMonitor && (
+            {!isMonitor && !isContainer && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: 'var(--panel2)', border: '1px solid var(--border)', borderRadius: 10, padding: '11px 13px' }}>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -210,6 +227,43 @@ export function NodeDrawer({ node, live, onChanged, onDeleted, onClose, onHelp }
         {tab === 'metrics' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 11 }}>
             {metricsToShow.map((m) => <Sparkline key={m} nodeId={node.id} metric={m} hoursBack={6} />)}
+          </div>
+        )}
+
+        {tab === 'inside' && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span className="chip" style={{ background: STATUS[memberWorst as keyof typeof STATUS].soft, color: STATUS[memberWorst as keyof typeof STATUS].color }}>
+                {members.length} equipo{members.length !== 1 ? 's' : ''} · {STATUS[memberWorst as keyof typeof STATUS].label}
+              </span>
+            </div>
+            {/* miembros actuales */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+              {members.map((m) => {
+                const ms = liveAll[m.id]?.status ?? 'unknown';
+                const mm = typeMeta(m.type);
+                return (
+                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--panel2)', border: '1px solid var(--border)', borderRadius: 9, padding: '8px 11px' }}>
+                    <span className="node-ico" style={{ width: 26, height: 26, color: mm.color }}><Icon path={ICONS[mm.icon]} size={14} strokeWidth={1.9} /></span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.name}</div>
+                      <div className="mono" style={{ fontSize: 10.5, color: 'var(--muted)' }}>{mm.label} · {m.ip || 'sin IP'}</div>
+                    </div>
+                    <span className="node-dot" style={{ background: STATUS[ms as keyof typeof STATUS].color }} />
+                    <button className="btn" style={{ padding: '4px 9px' }} onClick={() => void api.updateNode(m.id, { containerId: null }).then(onChanged)}>Sacar</button>
+                  </div>
+                );
+              })}
+              {members.length === 0 && <div className="empty-hint" style={{ padding: 0 }}>Aún no hay equipos aquí. Añade abajo.</div>}
+            </div>
+            {/* añadir un equipo suelto */}
+            <div className="field-label" style={{ marginBottom: 6 }}>Añadir equipo</div>
+            <select className="inp sans" value="" onChange={(e) => { const mid = parseInt(e.target.value, 10); if (mid) void api.updateNode(mid, { containerId: node.id }).then(onChanged); }}>
+              <option value="">— elegir equipo suelto —</option>
+              {nodes.filter((n) => n.id !== node.id && n.containerId == null && n.type !== 'monitor' && !CONTAINER_TYPES.includes(n.type)).map((n) => (
+                <option key={n.id} value={n.id}>{n.name} ({typeMeta(n.type).label})</option>
+              ))}
+            </select>
           </div>
         )}
 

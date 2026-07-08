@@ -15,6 +15,8 @@ export const ICONS = {
   ap: 'M5 12.5a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0M12 19h.01',
   litebeam: 'M12 3v9M12 12l7-7M12 12l-7-7M8 21h8M10 21l1-9M14 21l-1-9',
   client: 'M3 10l9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 21v-7h6v7',
+  torre: 'M12 2v20M7 22l5-14 5 14M9 8h6M8 12h8M6.5 16h11',
+  rack: 'M4 3h16v18H4zM4 8h16M4 13h16M4 18h16M7 5.5h.01M7 10.5h.01M7 15.5h.01',
 } as const;
 
 export type IconKey = keyof typeof ICONS;
@@ -36,7 +38,14 @@ export const TYPE_META: Record<NodeType, TypeMeta> = {
   'ap-ubiquiti': { icon: 'ap', color: '#57c7d4', label: 'AP Ubiquiti' },
   'litebeam': { icon: 'litebeam', color: '#7aa2ff', label: 'LiteBeam / Estación' },
   'cliente': { icon: 'client', color: '#aab6cc', label: 'Cliente' },
+  'torre': { icon: 'torre', color: '#57c7d4', label: 'Torre' },
+  'rack': { icon: 'rack', color: '#8b5bff', label: 'Rack' },
 };
+
+/** Metadatos del tipo con fallback (evita crash si el frontend es más viejo que un tipo nuevo). */
+export function typeMeta(type: NodeType): TypeMeta {
+  return TYPE_META[type] ?? TYPE_META.cliente;
+}
 
 /** Icono SVG de línea reutilizable. */
 export function Icon({

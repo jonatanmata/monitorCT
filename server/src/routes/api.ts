@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { db, getSetting, setSetting, NODE_TYPES, focusStart, setFocusStart, clearFocus, withFocus, type NodeRow, type EdgeRow, type Credentials, type NodeType } from '../db/index.js';
+import { db, getSetting, setSetting, NODE_TYPES, CONTAINER_TYPES, focusStart, setFocusStart, clearFocus, withFocus, type NodeRow, type EdgeRow, type Credentials, type NodeType } from '../db/index.js';
 import { encryptJson, decryptJson } from '../db/crypto.js';
 import { allLiveNodes, dropLiveNode } from '../state.js';
 import { pingHost } from '../pollers/ping.js';
@@ -26,6 +26,7 @@ interface NodeBody {
   // (incluido null = des-ubicar); si no viene, se conserva la guardada.
   lat?: number | null;
   lng?: number | null;
+  containerId?: number | null; // rack/torre al que pertenece (null = suelto)
 }
 
 const TYPE_DEFAULT_NAME: Record<NodeType, string> = {
@@ -38,9 +39,26 @@ const TYPE_DEFAULT_NAME: Record<NodeType, string> = {
   'ap-ubiquiti': 'AP Ubiquiti',
   'litebeam': 'LiteBeam',
   'cliente': 'Cliente',
+  'torre': 'Torre',
+  'rack': 'Rack',
 };
 function defaultNameForType(type: NodeType): string {
   return TYPE_DEFAULT_NAME[type] ?? type;
+}
+
+/**
+ * Valida asignar `nodeId` (o un nodo nuevo del tipo dado) al contenedor `containerId`.
+ * Reglas: el destino debe ser rack/torre; sin auto-contención ni ciclos.
+ * Devuelve un mensaje de error o null si es válido.
+ */
+function validateContainer(containerId: number | null, nodeId: number | null, nodeType: NodeType): string | null {
+  if (containerId == null) return null;
+  if (nodeId != null && containerId === nodeId) return 'Un equipo no puede contenerse a sí mismo';
+  const target = db.prepare('SELECT type FROM nodes WHERE id = ?').get(containerId) as { type: NodeType } | undefined;
+  if (!target) return 'El contenedor destino no existe';
+  if (!CONTAINER_TYPES.includes(target.type)) return 'Solo un rack o una torre puede contener equipos';
+  if (CONTAINER_TYPES.includes(nodeType)) return 'Un contenedor no puede ir dentro de otro contenedor';
+  return null;
 }
 
 function nodeToJson(n: NodeRow) {
@@ -61,6 +79,7 @@ function nodeToJson(n: NodeRow) {
     watched: isWatched(n.id),
     lat: n.lat,
     lng: n.lng,
+    containerId: n.container_id,
   };
 }
 
@@ -76,10 +95,12 @@ export function registerApiRoutes(app: FastifyInstance): void {
     const b = req.body as NodeBody;
     if (!NODE_TYPES.includes(b.type)) return reply.code(400).send({ error: 'Tipo de equipo inválido' });
     if (b.type === 'monitor') return reply.code(400).send({ error: 'El nodo Monitor es único y se crea automáticamente' });
+    const contErr = validateContainer(b.containerId ?? null, null, b.type);
+    if (contErr) return reply.code(400).send({ error: contErr });
     const res = db
       .prepare(
-        `INSERT INTO nodes (type, name, ip, pos_x, pos_y, credentials_enc, probe_targets, probe_src_addresses, enabled, lat, lng)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO nodes (type, name, ip, pos_x, pos_y, credentials_enc, probe_targets, probe_src_addresses, enabled, lat, lng, container_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         b.type, b.name, b.ip ?? '', b.posX ?? 0, b.posY ?? 0,
@@ -87,7 +108,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
         JSON.stringify(b.probeTargets ?? []),
         JSON.stringify(b.probeSrcAddresses ?? []),
         b.enabled === false ? 0 : 1,
-        b.lat ?? null, b.lng ?? null,
+        b.lat ?? null, b.lng ?? null, b.containerId ?? null,
       );
     const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(res.lastInsertRowid) as NodeRow;
     return nodeToJson(node);
@@ -111,16 +132,28 @@ export function registerApiRoutes(app: FastifyInstance): void {
       credentialsEnc = encryptJson(merged);
     }
 
-    // lat/lng: semántica de clave presente (permite null explícito para des-ubicar)
+    // lat/lng/containerId: semántica de clave presente (permite null explícito)
     const body = req.body as Record<string, unknown>;
     const lat = 'lat' in body ? (b.lat ?? null) : existing.lat;
     const lng = 'lng' in body ? (b.lng ?? null) : existing.lng;
+    const newType = b.type ?? existing.type;
+    const containerId = 'containerId' in body ? (b.containerId ?? null) : existing.container_id;
+
+    if ('containerId' in body) {
+      const contErr = validateContainer(containerId, id, newType);
+      if (contErr) return reply.code(400).send({ error: contErr });
+    }
+    // No convertir un contenedor con miembros a otro tipo (dejaría miembros huérfanos)
+    if (newType !== existing.type && CONTAINER_TYPES.includes(existing.type)) {
+      const members = db.prepare('SELECT COUNT(*) AS c FROM nodes WHERE container_id = ?').get(id) as { c: number };
+      if (members.c > 0) return reply.code(400).send({ error: 'Saca primero los equipos del contenedor antes de cambiar su tipo' });
+    }
 
     db.prepare(
       `UPDATE nodes SET type = ?, name = ?, ip = ?, pos_x = ?, pos_y = ?, credentials_enc = ?,
-       probe_targets = ?, probe_src_addresses = ?, enabled = ?, lat = ?, lng = ? WHERE id = ?`,
+       probe_targets = ?, probe_src_addresses = ?, enabled = ?, lat = ?, lng = ?, container_id = ? WHERE id = ?`,
     ).run(
-      b.type ?? existing.type,
+      newType,
       b.name ?? existing.name,
       b.ip ?? existing.ip,
       b.posX ?? existing.pos_x,
@@ -129,7 +162,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
       JSON.stringify(b.probeTargets ?? JSON.parse(existing.probe_targets)),
       JSON.stringify(b.probeSrcAddresses ?? JSON.parse(existing.probe_src_addresses)),
       b.enabled === undefined ? existing.enabled : b.enabled ? 1 : 0,
-      lat, lng,
+      lat, lng, containerId,
       id,
     );
     const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(id) as NodeRow;

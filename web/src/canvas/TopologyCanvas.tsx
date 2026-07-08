@@ -8,7 +8,7 @@ import '@xyflow/react/dist/style.css';
 import { DeviceNode, type DeviceFlowNode } from './DeviceNode';
 import { FlowEdge as FlowEdgeComponent } from './FlowEdge';
 import type { ApiNode, ApiEdge, LiveNode, NodeType } from '../types';
-import { NODE_TYPE_LABELS, ADDABLE_TYPES, nodesForInsert } from '../types';
+import { NODE_TYPE_LABELS, ADDABLE_TYPES, INSERTABLE_TYPES, nodesForInsert } from '../types';
 import { api } from '../api';
 import { Icon, ICONS, TYPE_META } from '../ui/meta';
 
@@ -235,7 +235,7 @@ export function TopologyCanvas({
             }}
           >
             <div className="palette-title" style={{ padding: '4px 8px' }}>Insertar aquí</div>
-            {ADDABLE_TYPES.map((t) => {
+            {INSERTABLE_TYPES.map((t) => {
               const meta = TYPE_META[t];
               return (
                 <button key={t} onClick={() => doInsert(t)}>

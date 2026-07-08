@@ -18,7 +18,9 @@ CREATE TABLE IF NOT EXISTS nodes (
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   -- Ubicación geográfica para el modo mapa (null = sin ubicar)
   lat REAL,
-  lng REAL
+  lng REAL,
+  -- Pertenencia a un contenedor (rack/torre); null = suelto
+  container_id INTEGER REFERENCES nodes(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS edges (

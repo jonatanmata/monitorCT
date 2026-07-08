@@ -18,11 +18,15 @@ db.exec(schema);
 
 export type NodeType =
   | 'monitor' | 'gateway-isp' | 'router' | 'mikrotik' | 'switch'
-  | 'ptp-mimosa' | 'ap-ubiquiti' | 'litebeam' | 'cliente';
+  | 'ptp-mimosa' | 'ap-ubiquiti' | 'litebeam' | 'cliente'
+  | 'torre' | 'rack';
 export const NODE_TYPES: NodeType[] = [
   'monitor', 'gateway-isp', 'router', 'mikrotik', 'switch',
   'ptp-mimosa', 'ap-ubiquiti', 'litebeam', 'cliente',
+  'torre', 'rack',
 ];
+/** Contenedores: agrupan otros equipos por referencia (container_id), no por enlaces. */
+export const CONTAINER_TYPES: NodeType[] = ['torre', 'rack'];
 
 /**
  * Migración idempotente: las bases creadas antes de añadir el tipo 'monitor'
@@ -75,6 +79,8 @@ function addColumnIfMissing(table: string, column: string, ddl: string): void {
 // Modo mapa: ubicación geográfica de cada nodo (null = sin ubicar en el mapa).
 addColumnIfMissing('nodes', 'lat', 'REAL');
 addColumnIfMissing('nodes', 'lng', 'REAL');
+// Contenedores: pertenencia a un rack/torre (null = suelto). SET NULL al borrar el contenedor.
+addColumnIfMissing('nodes', 'container_id', 'INTEGER REFERENCES nodes(id) ON DELETE SET NULL');
 
 /** Garantiza que exista el nodo Monitor (raíz singleton = este PC). No borrable. */
 export function ensureMonitorNode(): void {
@@ -101,6 +107,7 @@ export interface NodeRow {
   created_at: number;
   lat: number | null;
   lng: number | null;
+  container_id: number | null;
 }
 
 export interface EdgeRow {

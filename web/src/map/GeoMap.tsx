@@ -2,8 +2,30 @@ import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { ApiNode, ApiEdge, LiveNode } from '../types';
-import { ICONS, TYPE_META } from '../ui/meta';
+import { CONTAINER_TYPES } from '../types';
+import { ICONS, typeMeta } from '../ui/meta';
 import { api } from '../api';
+
+/** Coordenada efectiva: propia, o heredada del contenedor (con leve dispersión para no solaparse). */
+function computeEffCoords(nodes: ApiNode[]): Map<number, { lat: number; lng: number; inherited: boolean }> {
+  const out = new Map<number, { lat: number; lng: number; inherited: boolean }>();
+  const containers = new Map<number, { lat: number; lng: number }>();
+  for (const n of nodes) if (CONTAINER_TYPES.includes(n.type) && n.lat != null && n.lng != null) containers.set(n.id, { lat: n.lat, lng: n.lng });
+  const idxInContainer = new Map<number, number>();
+  for (const n of nodes) {
+    if (n.lat != null && n.lng != null) { out.set(n.id, { lat: n.lat, lng: n.lng, inherited: false }); continue; }
+    if (n.containerId != null) {
+      const c = containers.get(n.containerId);
+      if (c) {
+        const i = idxInContainer.get(n.containerId) ?? 0;
+        idxInContainer.set(n.containerId, i + 1);
+        const ang = i * 0.9, r = 0.0004 * (1 + Math.floor(i / 6));
+        out.set(n.id, { lat: c.lat + Math.sin(ang) * r, lng: c.lng + Math.cos(ang) * r, inherited: true });
+      }
+    }
+  }
+  return out;
+}
 
 const HEALTH_HEX: Record<string, string> = { up: '#33cc7a', warning: '#f5b13d', down: '#f0556b', unknown: '#6b788f' };
 
@@ -39,7 +61,7 @@ function buildMarkerEl(): HTMLDivElement {
   return el;
 }
 function paintMarker(el: HTMLElement, node: ApiNode, live: LiveNode | undefined): void {
-  const meta = TYPE_META[node.type] ?? TYPE_META.cliente;
+  const meta = typeMeta(node.type);
   const status = effStatus(node, live);
   const color = HEALTH_HEX[status];
   const ico = el.querySelector('.geo-ico') as HTMLElement;
@@ -116,15 +138,17 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, onSe
     const map = mapRef.current;
     if (!map || !ready) return;
     const markers = markersRef.current;
+    const eff = computeEffCoords(nodes);
     const seen = new Set<number>();
     for (const n of nodes) {
-      if (n.lat == null || n.lng == null) continue;
+      const c = eff.get(n.id);
+      if (!c) continue;
       seen.add(n.id);
       let entry = markers.get(n.id);
       if (!entry) {
         const el = buildMarkerEl();
         el.addEventListener('click', (ev) => { ev.stopPropagation(); cbRef.current.onSelectNode(n.id); });
-        const marker = new maplibregl.Marker({ element: el, draggable: n.type !== 'monitor' }).setLngLat([n.lng, n.lat]).addTo(map);
+        const marker = new maplibregl.Marker({ element: el, draggable: n.type !== 'monitor' }).setLngLat([c.lng, c.lat]).addTo(map);
         marker.on('dragend', () => {
           const ll = marker.getLngLat();
           void api.updateNode(n.id, { lat: ll.lat, lng: ll.lng }).then(() => cbRef.current.onChanged());
@@ -132,7 +156,7 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, onSe
         entry = { marker, el };
         markers.set(n.id, entry);
       } else {
-        entry.marker.setLngLat([n.lng, n.lat]);
+        entry.marker.setLngLat([c.lng, c.lat]);
       }
       paintMarker(entry.el, n, dataRef.current.live[n.id]);
     }
@@ -148,19 +172,22 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, onSe
       if (entry) paintMarker(entry.el, n, live[n.id]);
     }
     const byId = new Map(nodes.map((n) => [n.id, n]));
+    const eff = computeEffCoords(nodes);
     const features = edges.flatMap((e) => {
       const s = byId.get(e.source_id), t = byId.get(e.target_id);
-      if (!s || !t || s.lat == null || s.lng == null || t.lat == null || t.lng == null) return [];
+      const sc = eff.get(e.source_id), tc = eff.get(e.target_id);
+      if (!s || !t || !sc || !tc) return [];
       const rank = { down: 3, warning: 2, unknown: 1, up: 0 } as Record<string, number>;
       const a = effStatus(s, live[s.id]), b = effStatus(t, live[t.id]);
       const health = rank[a] >= rank[b] ? a : b;
-      return [{ type: 'Feature' as const, properties: { id: e.id, color: HEALTH_HEX[health] }, geometry: { type: 'LineString' as const, coordinates: [[s.lng, s.lat], [t.lng, t.lat]] } }];
+      return [{ type: 'Feature' as const, properties: { id: e.id, color: HEALTH_HEX[health] }, geometry: { type: 'LineString' as const, coordinates: [[sc.lng, sc.lat], [tc.lng, tc.lat]] } }];
     });
     const src = map.getSource('edges') as maplibregl.GeoJSONSource | undefined;
     src?.setData({ type: 'FeatureCollection', features });
   }, [live, nodes, edges, ready]);
 
-  const unplaced = nodes.filter((n) => n.lat == null || n.lng == null);
+  const effAll = computeEffCoords(nodes);
+  const unplaced = nodes.filter((n) => !effAll.has(n.id));
 
   const placeAtCenter = (n: ApiNode) => {
     const c = mapRef.current?.getCenter();
@@ -192,7 +219,7 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, onSe
           <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 8 }}>Clic para colocar en el centro del mapa; luego arrastra el marcador.</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto' }}>
             {unplaced.map((n) => {
-              const meta = TYPE_META[n.type] ?? TYPE_META.cliente;
+              const meta = typeMeta(n.type);
               return (
                 <button key={n.id} className="palette-btn" onClick={() => placeAtCenter(n)} title={`Colocar ${n.name}`}>
                   <span className="palette-ico" style={{ color: meta.color, width: 22, height: 22 }} dangerouslySetInnerHTML={{ __html: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[meta.icon]}"/></svg>` }} />

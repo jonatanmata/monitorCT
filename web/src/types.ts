@@ -1,6 +1,7 @@
 export type NodeType =
   | 'monitor' | 'gateway-isp' | 'router' | 'mikrotik' | 'switch'
-  | 'ptp-mimosa' | 'ap-ubiquiti' | 'litebeam' | 'cliente';
+  | 'ptp-mimosa' | 'ap-ubiquiti' | 'litebeam' | 'cliente'
+  | 'torre' | 'rack';
 
 export interface ApiNode {
   id: number;
@@ -18,6 +19,8 @@ export interface ApiNode {
   /** Ubicación geográfica en el mapa (null = sin ubicar). */
   lat: number | null;
   lng: number | null;
+  /** Contenedor (rack/torre) al que pertenece (null = suelto). */
+  containerId: number | null;
 }
 
 export interface ApiEdge {
@@ -81,6 +84,8 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   'ap-ubiquiti': 'AP Ubiquiti',
   'litebeam': 'LiteBeam / Estación',
   'cliente': 'Cliente (LiteBeam)',
+  'torre': 'Torre',
+  'rack': 'Rack',
 };
 
 export const NODE_TYPE_ICONS: Record<NodeType, string> = {
@@ -93,12 +98,20 @@ export const NODE_TYPE_ICONS: Record<NodeType, string> = {
   'ap-ubiquiti': '📶',
   'litebeam': '🛰️',
   'cliente': '🏠',
+  'torre': '🗼',
+  'rack': '🗄️',
 };
 
-/** Tipos que el usuario puede añadir/insertar (el monitor es singleton y automático). */
+/** Contenedores (agrupan equipos por pertenencia, no por enlaces). */
+export const CONTAINER_TYPES: NodeType[] = ['torre', 'rack'];
+
+/** Tipos que el usuario puede añadir desde la paleta (el monitor es singleton y automático). */
 export const ADDABLE_TYPES: NodeType[] = [
-  'gateway-isp', 'router', 'mikrotik', 'switch', 'ptp-mimosa', 'ap-ubiquiti', 'litebeam', 'cliente',
+  'gateway-isp', 'router', 'mikrotik', 'switch', 'ptp-mimosa', 'ap-ubiquiti', 'litebeam', 'cliente', 'torre', 'rack',
 ];
+
+/** Tipos insertables al «romper el hilo» de un enlace (los contenedores no se insertan en enlaces). */
+export const INSERTABLE_TYPES: NodeType[] = ADDABLE_TYPES.filter((t) => !CONTAINER_TYPES.includes(t));
 
 /** Nodos a insertar al partir un enlace: PTP inserta la pareja (2 antenas); el resto, uno. */
 export function nodesForInsert(type: NodeType): { type: NodeType; name?: string }[] {
