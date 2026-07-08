@@ -56,9 +56,16 @@ try {
   }
 
   log(`hay ${behind} actualización(es) nueva(s); descargando…`);
+  // Descarta cambios locales de archivos versionados (sobre todo package-lock.json, que
+  // npm regenera) para que el pull no se bloquee. La BD y .env están en .gitignore → intactos.
+  sh('git', ['checkout', '--', '.'], 15000);
   if (sh('git', ['pull', '--ff-only'], 30000).status !== 0) {
-    log('git pull falló (¿cambios locales sin guardar?); se arranca con la versión actual.');
-    process.exit(0);
+    // Reintento: forzar el árbol de trabajo a la versión de GitHub (descarta lo versionado).
+    log('git pull bloqueado por cambios locales; forzando a la versión de GitHub…');
+    if (sh('git', ['reset', '--hard', `origin/${branch}`], 30000).status !== 0) {
+      log('no se pudo actualizar; se arranca con la versión actual.');
+      process.exit(0);
+    }
   }
   log('instalando dependencias…');
   if (sh(npm, ['install', '--no-audit', '--no-fund'], 180000).status !== 0) {

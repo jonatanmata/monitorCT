@@ -116,8 +116,20 @@ export async function applyUpdate(): Promise<ApplyResult> {
   };
 
   const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  if (!(await step('git pull --ff-only', 'git', ['pull', '--ff-only'], 30000)))
-    return { ok: false, log: log + '\n✗ Falló git pull (¿cambios locales?). No se aplicó nada.', restartRequired: false };
+  // Descarta cambios locales de archivos versionados (sobre todo package-lock.json, que
+  // npm regenera en cada instalación) para que el pull no se bloquee. La BD, .env y demás
+  // datos están en .gitignore → quedan intactos.
+  log += '\n$ git checkout -- . (descartar cambios locales autogenerados)\n';
+  log += (await git(['checkout', '--', '.'], 15000)).out.trim() + '\n';
+  if (!(await step('git pull --ff-only', 'git', ['pull', '--ff-only'], 30000))) {
+    // Reintento: forzar el árbol de trabajo a coincidir con GitHub (descarta lo versionado).
+    const branch = (await git(['rev-parse', '--abbrev-ref', 'HEAD'])).out.trim() || 'main';
+    log += `\n$ git reset --hard origin/${branch} (reintento)\n`;
+    const reset = await git(['reset', '--hard', `origin/${branch}`], 30000);
+    log += reset.out.trim() + '\n';
+    if (reset.code !== 0)
+      return { ok: false, log: log + '\n✗ Falló git pull. No se aplicó nada.', restartRequired: false };
+  }
   if (!(await step('npm install', npm, ['install', '--no-audit', '--no-fund'], 180000)))
     return { ok: false, log: log + '\n✗ Falló npm install.', restartRequired: false };
   if (!(await step('npm run build', npm, ['run', 'build'], 180000)))
