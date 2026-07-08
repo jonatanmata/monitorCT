@@ -29,6 +29,18 @@ function computeEffCoords(nodes: ApiNode[]): Map<number, { lat: number; lng: num
 
 const HEALTH_HEX: Record<string, string> = { up: '#33cc7a', warning: '#f5b13d', down: '#f0556b', unknown: '#6b788f' };
 
+/** Distancia geodésica en metros entre dos coordenadas (Haversine). */
+function haversineM(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371000, toRad = Math.PI / 180;
+  const dLat = (bLat - aLat) * toRad, dLng = (bLng - aLng) * toRad;
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * toRad) * Math.cos(bLat * toRad) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+/** Formatea metros a «340 m» / «1.24 km». */
+function fmtDist(m: number): string {
+  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(m < 10000 ? 2 : 1)} km`;
+}
+
 /**
  * Devuelve el estilo para MapLibre según el proveedor detectado por la key:
  * - Mapbox (token que empieza por 'pk.'/'sk.'): tiles raster de la API de estilos de Mapbox.
@@ -119,6 +131,7 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement }>>(new Map());
+  const edgeLabelsRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement }>>(new Map());
   const loadedRef = useRef(false);
   // refs para leer datos frescos dentro de handlers de MapLibre
   const dataRef = useRef({ nodes, edges, live });
@@ -186,7 +199,7 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
       try { map.setPaintProperty('edges-flow', 'line-dasharray', dashSeq[step]); } catch { /* estilo recargando */ }
     }, 90);
 
-    return () => { clearInterval(anim); ro.disconnect(); map.remove(); mapRef.current = null; loadedRef.current = false; setReady(false); };
+    return () => { clearInterval(anim); ro.disconnect(); map.remove(); mapRef.current = null; loadedRef.current = false; markersRef.current.clear(); edgeLabelsRef.current.clear(); setReady(false); };
     // Recrear el mapa si cambia la key o el estilo
   }, [maptilerKey, mapStyle]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -235,6 +248,8 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
     }
     const byId = new Map(nodes.map((n) => [n.id, n]));
     const eff = computeEffCoords(nodes);
+    const labels = edgeLabelsRef.current;
+    const seenL = new Set<number>();
     const features = edges.flatMap((e) => {
       const s = byId.get(e.source_id), t = byId.get(e.target_id);
       const sc = eff.get(e.source_id), tc = eff.get(e.target_id);
@@ -242,8 +257,29 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, sele
       const rank = { down: 3, warning: 2, unknown: 1, up: 0 } as Record<string, number>;
       const a = effStatus(s, live[s.id]), b = effStatus(t, live[t.id]);
       const health = rank[a] >= rank[b] ? a : b;
+
+      // Etiqueta de distancia geodésica en el punto medio (la fibra se resalta).
+      const distM = haversineM(sc.lat, sc.lng, tc.lat, tc.lng);
+      const isFiber = e.medium === 'fiber';
+      seenL.add(e.id);
+      let lbl = labels.get(e.id);
+      if (!lbl) {
+        const el = document.createElement('div');
+        el.className = 'geo-dist';
+        el.addEventListener('click', (ev) => { ev.stopPropagation(); cbRef.current.onSelectEdge(e.id); });
+        const marker = new maplibregl.Marker({ element: el }).setLngLat([(sc.lng + tc.lng) / 2, (sc.lat + tc.lat) / 2]).addTo(map);
+        lbl = { marker, el };
+        labels.set(e.id, lbl);
+      } else {
+        lbl.marker.setLngLat([(sc.lng + tc.lng) / 2, (sc.lat + tc.lat) / 2]);
+      }
+      lbl.el.textContent = fmtDist(distM);
+      lbl.el.title = isFiber ? `Fibra · ${fmtDist(distM)} (distancia en el mapa)` : fmtDist(distM);
+      lbl.el.classList.toggle('is-fiber', isFiber);
+
       return [{ type: 'Feature' as const, properties: { id: e.id, color: HEALTH_HEX[health] }, geometry: { type: 'LineString' as const, coordinates: [[sc.lng, sc.lat], [tc.lng, tc.lat]] } }];
     });
+    for (const [id, lbl] of labels) if (!seenL.has(id)) { lbl.marker.remove(); labels.delete(id); }
     const src = map.getSource('edges') as maplibregl.GeoJSONSource | undefined;
     src?.setData({ type: 'FeatureCollection', features });
   }, [live, nodes, edges, ready]);
