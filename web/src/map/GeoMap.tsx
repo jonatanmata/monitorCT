@@ -149,10 +149,22 @@ function orderMembers(members: ApiNode[]): ApiNode[] {
     return (ma.slot ?? 999) - (mb.slot ?? 999);
   });
 }
-function paintTower(el: HTMLElement, container: ApiNode, members: ApiNode[], live: Record<number, LiveNode>): void {
+const CHEV_UP = 'M6 15l6-6 6 6', CHEV_DOWN = 'M6 9l6 6 6-6';
+function chevronBtn(dir: 'up' | 'down'): string {
+  return `<button class="geo-tower-toggle" data-toggle="1" title="${dir === 'up' ? 'Mostrar equipos' : 'Ocultar equipos'}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="${dir === 'up' ? CHEV_UP : CHEV_DOWN}"/></svg></button>`;
+}
+function paintTower(el: HTMLElement, container: ApiNode, members: ApiNode[], live: Record<number, LiveNode>, collapsed: boolean): void {
   const cmeta = typeMeta(container.type);
   let worst = 'unknown';
   for (const m of members) { const s = m.type === 'monitor' ? 'up' : effStatus(m, live[m.id]); if ((STATUS_RANK[s] ?? 0) >= (STATUS_RANK[worst] ?? 0)) worst = s; }
+  const base =
+    `<div class="geo-tower-base" data-mid="" style="border-color:${HEALTH_HEX[worst]}">` +
+      (collapsed && members.length ? chevronBtn('up') : '') +
+      `<span class="geo-tower-ico" style="color:${cmeta.color}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[cmeta.icon]}"/></svg></span>` +
+      `<span class="geo-tower-basename">${escapeHtml(container.name)}</span>` +
+      `<span class="geo-tower-dot" style="background:${HEALTH_HEX[worst]}"></span>` +
+    `</div>`;
+  if (collapsed) { el.innerHTML = base; return; } // solo la base + flecha ↑ (equipos ocultos)
   const items = orderMembers(members).map((m) => {
     const mm = typeMeta(m.type);
     const st = m.type === 'monitor' ? 'up' : effStatus(m, live[m.id]);
@@ -160,13 +172,10 @@ function paintTower(el: HTMLElement, container: ApiNode, members: ApiNode[], liv
     return `<div class="geo-tower-item" data-mid="${m.id}"><span class="geo-tower-bar" style="background:${mm.color}"></span><span class="geo-tower-name">${escapeHtml(m.name)}</span><span class="geo-tower-dot ${down}" style="background:${HEALTH_HEX[st]}"></span></div>`;
   }).join('');
   el.innerHTML =
-    `<div class="geo-tower-stack">${items || '<div class="geo-tower-empty">torre vacía</div>'}</div>` +
+    `<div class="geo-tower-tophandle">${chevronBtn('down')}</div>` + // flecha ↓ arriba para ocultar
+    `<div class="geo-tower-stack anim">${items}</div>` +
     `<div class="geo-tower-mast"></div>` +
-    `<div class="geo-tower-base" data-mid="" style="border-color:${HEALTH_HEX[worst]}">` +
-      `<span class="geo-tower-ico" style="color:${cmeta.color}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[cmeta.icon]}"/></svg></span>` +
-      `<span class="geo-tower-basename">${escapeHtml(container.name)}</span>` +
-      `<span class="geo-tower-dot" style="background:${HEALTH_HEX[worst]}"></span>` +
-    `</div>`;
+    base;
 }
 
 // Encuadre recordado entre montajes (cambiar de sección/tema recrea el mapa; así no se
@@ -179,6 +188,8 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, them
   const markersRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement; kind: 'tower' | 'node' }>>(new Map());
   const clusterMarkersRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement }>>(new Map());
   const edgeLabelsRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement }>>(new Map());
+  // Torres/racks colapsados en el mapa (por defecto colapsados = equipos ocultos).
+  const towerCollapsedRef = useRef<Map<number, boolean>>(new Map());
   const loadedRef = useRef(false);
   // refs para leer datos frescos dentro de handlers de MapLibre
   const dataRef = useRef({ nodes, edges, live });
@@ -259,6 +270,25 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, them
     }
     for (const [key, entry] of cm) if (!seen.has(key)) { entry.marker.remove(); cm.delete(key); }
   }, []);
+
+  // --- colapsar/expandir los equipos de una torre/rack en el mapa ---
+  const isTowerCollapsed = (cid: number) => towerCollapsedRef.current.get(cid) ?? true; // por defecto oculto
+  const membersOfContainer = (cid: number, nodes: ApiNode[]): ApiNode[] => {
+    const eff = computeEffCoords(nodes);
+    return nodes.filter((m) => eff.get(m.id)?.inherited && m.containerId === cid);
+  };
+  const repaintTower = useCallback((cid: number) => {
+    const entry = markersRef.current.get(cid);
+    if (!entry || entry.kind !== 'tower') return;
+    const { nodes } = dataRef.current;
+    const c = nodes.find((n) => n.id === cid);
+    if (c) paintTower(entry.el, c, membersOfContainer(cid, nodes), dataRef.current.live, isTowerCollapsed(cid));
+  }, []);
+  const toggleTowerCollapse = useCallback((cid: number) => {
+    towerCollapsedRef.current.set(cid, !isTowerCollapsed(cid));
+    repaintTower(cid);
+    recluster(); // el tamaño del marcador cambió → reagrupar
+  }, [repaintTower, recluster]);
 
   // --- crear el mapa una vez ---
   useEffect(() => {
@@ -365,9 +395,10 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, them
           const ll = marker.getLngLat();
           void api.updateNode(n.id, { lat: ll.lat, lng: ll.lng }).then(() => cbRef.current.onChanged());
         });
-        // Clic limpio (no fue arrastre): abre el equipo (o el miembro pulsado en una torre).
+        // Clic limpio (no fue arrastre): flecha ↕ colapsa/expande; equipo/miembro abre su panel.
         el.addEventListener('click', (ev) => {
           ev.stopPropagation(); if (Date.now() - draggedAt < 250) return;
+          if ((ev.target as HTMLElement).closest('[data-toggle]')) { toggleTowerCollapse(Number(el.dataset.cid)); return; }
           const item = (ev.target as HTMLElement).closest('[data-mid]');
           const mid = item?.getAttribute('data-mid');
           cbRef.current.onSelectNode(mid ? Number(mid) : Number(el.dataset.cid));
@@ -377,7 +408,7 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, them
       } else if (!entry.marker.isDraggable() || !(entry.el.style.cursor === 'grabbing')) {
         entry.marker.setLngLat([c.lng, c.lat]);
       }
-      if (kind === 'tower') paintTower(entry.el, n, membersByContainer.get(n.id) ?? [], dataRef.current.live);
+      if (kind === 'tower') paintTower(entry.el, n, membersByContainer.get(n.id) ?? [], dataRef.current.live, isTowerCollapsed(n.id));
       else paintMarker(entry.el, n, dataRef.current.live[n.id], badgeFor(n, dataRef.current.nodes, dataRef.current.live));
     }
     for (const [id, entry] of markers) if (!seen.has(id)) { entry.marker.remove(); markers.delete(id); }
@@ -394,7 +425,7 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, them
     for (const n of nodes) {
       const entry = markersRef.current.get(n.id);
       if (!entry) continue;
-      if (entry.kind === 'tower') paintTower(entry.el, n, membersByContainer.get(n.id) ?? [], live);
+      if (entry.kind === 'tower') paintTower(entry.el, n, membersByContainer.get(n.id) ?? [], live, isTowerCollapsed(n.id));
       else paintMarker(entry.el, n, live[n.id], badgeFor(n, nodes, live));
     }
     const byId = new Map(nodes.map((n) => [n.id, n]));

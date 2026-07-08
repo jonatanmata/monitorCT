@@ -115,27 +115,25 @@ export function TopologyCanvas({
   }, [nodes, live, selectedNodeId, containerOf, worstByContainer, onOpenContainer, onSelectNode, toggleCollapse, collapsed, dimsTick]);
 
   const flowEdges: FlowEdge[] = useMemo(() => {
-    // Extremo dibujado: si el nodo está en un contenedor, el enlace va a la tarjeta del contenedor.
-    const rendered = (id: number) => containerOf.get(id) ?? id;
-    // Estado efectivo del extremo dibujado (contenedor = peor de sus miembros).
-    const effStatus = (renderedId: number): Health =>
-      (CONTAINER_TYPES as NodeType[]).includes(nodes.find((n) => n.id === renderedId)?.type as NodeType)
-        ? worstByContainer.get(renderedId) ?? 'unknown'
-        : statusOf(renderedId);
-    const seen = new Set<string>();
+    // Cada enlace es INDEPENDIENTE: aunque el rack/torre esté agrupado, el hilo sale
+    // del equipo concreto (su handle en la tarjeta) y conserva SU propio estado. Así,
+    // si falla un equipo, solo se pone naranja/rojo su enlace, no todos.
     const out: FlowEdge[] = [];
     for (const e of edges) {
-      const ra = rendered(e.source_id), rb = rendered(e.target_id);
-      if (ra === rb) continue; // enlace interno de un contenedor → oculto en la tarjeta
-      const key = ra < rb ? `${ra}-${rb}` : `${rb}-${ra}`;
-      if (seen.has(key)) continue; // deduplicar líneas entre las mismas dos tarjetas/nodos
-      seen.add(key);
-      const a = effStatus(ra), b = effStatus(rb);
+      const srcCid = containerOf.get(e.source_id), tgtCid = containerOf.get(e.target_id);
+      const ra = srcCid ?? e.source_id, rb = tgtCid ?? e.target_id;
+      if (ra === rb) continue; // enlace interno del mismo contenedor → oculto en la tarjeta
+      // Salud por los extremos REALES (estado propio de cada equipo), no por el peor del contenedor.
+      const a = statusOf(e.source_id), b = statusOf(e.target_id);
       let health: Health = STATUS_RANK[a] >= STATUS_RANK[b] ? a : b;
       if (health !== 'down' && (live[e.target_id]?.bwNear || live[e.source_id]?.bwNear)) health = 'warning';
+      // Handle: si el extremo es miembro y su contenedor está EXPANDIDO → handle del equipo;
+      // si está colapsado → handle del contenedor ('c'); si es nodo suelto → handle por defecto.
+      const sourceHandle = srcCid != null ? (collapsed.has(srcCid) ? 'c' : `m-${e.source_id}`) : undefined;
+      const targetHandle = tgtCid != null ? (collapsed.has(tgtCid) ? 'c' : `m-${e.target_id}`) : undefined;
       out.push({
-        id: String(e.id), source: String(ra), target: String(rb), type: 'flow' as const,
-        selected: e.id === selectedEdgeId,
+        id: String(e.id), source: String(ra), target: String(rb), sourceHandle, targetHandle,
+        type: 'flow' as const, selected: e.id === selectedEdgeId,
         data: {
           label: e.label || (e.capacity_mbps ? `${e.capacity_mbps} Mbps` : undefined),
           health, onInsert: openInsertMenu,
@@ -143,7 +141,7 @@ export function TopologyCanvas({
       });
     }
     return out;
-  }, [edges, nodes, live, selectedEdgeId, openInsertMenu, containerOf, worstByContainer, statusOf]);
+  }, [edges, live, selectedEdgeId, openInsertMenu, containerOf, statusOf, collapsed]);
 
   const doInsert = useCallback(
     (type: NodeType) => {
