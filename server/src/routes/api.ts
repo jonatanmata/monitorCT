@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { db, getSetting, setSetting, NODE_TYPES, CONTAINER_TYPES, focusStart, setFocusStart, clearFocus, withFocus, type NodeRow, type EdgeRow, type Credentials, type NodeType } from '../db/index.js';
 import { encryptJson, decryptJson } from '../db/crypto.js';
 import { allLiveNodes, dropLiveNode } from '../state.js';
+import { broadcast } from '../state.js';
 import { pingHost } from '../pollers/ping.js';
 import { testConnection as testMikrotik, runCableTestAll, getRouterosFlow, auditMikrotik, getInterfaces } from '../pollers/mikrotik.js';
 import { testSnmp } from '../pollers/snmp.js';
@@ -494,7 +495,9 @@ export function registerApiRoutes(app: FastifyInstance): void {
 
   app.post('/api/alerts/:id/resolve', async (req) => {
     const id = parseInt((req.params as { id: string }).id, 10);
-    db.prepare('UPDATE alerts SET resolved_at = unixepoch() WHERE id = ? AND resolved_at IS NULL').run(id);
+    const res = db.prepare('UPDATE alerts SET resolved_at = unixepoch() WHERE id = ? AND resolved_at IS NULL').run(id);
+    // Avisar a la UI para que refresque y retire la alarma en pantalla de ese equipo.
+    if (res.changes > 0) broadcast('alert_resolved', { id });
     return { ok: true };
   });
 

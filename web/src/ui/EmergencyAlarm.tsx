@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './meta';
 
-export interface EmergencyItem { nodeId: number; name: string; message: string }
+export interface EmergencyItem { nodeId: number; name: string; message: string; alertId?: number }
 
 export interface AlarmCfg { enabled: boolean; intervalSec: number; allDevices: boolean }
 export const DEFAULT_ALARM: AlarmCfg = { enabled: true, intervalSec: 10, allDevices: false };

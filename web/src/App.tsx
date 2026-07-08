@@ -63,7 +63,7 @@ export default function App() {
         if (a.resolved_at || a.type !== 'node_down' || a.node_id == null) continue;
         const node = nodes.find((n) => n.id === a.node_id);
         if (node && (INFRA_TYPES.has(node.type) || node.watched || cfg.allDevices)) {
-          items.push({ nodeId: node.id, name: node.name, message: a.message });
+          items.push({ nodeId: node.id, name: node.name, message: a.message, alertId: a.id });
         }
       }
       if (items.length) setEmergencies(items);
@@ -78,7 +78,16 @@ export default function App() {
     api.topology().then((t) => { setNodes(t.nodes); setEdges(t.edges); setLive(t.live); setAiAvailable(t.aiAvailable); }).catch(() => {});
   }, []);
   const loadAlertCount = useCallback(() => {
-    api.alerts().then((r) => setOpenAlerts(r.alerts.filter((a) => !a.resolved_at).length)).catch(() => {});
+    api.alerts().then((r) => {
+      setOpenAlerts(r.alerts.filter((a) => !a.resolved_at).length);
+      // Retira de la alarma en pantalla las emergencias cuyo node_down ya se resolvió
+      // (el servicio volvió). Solo QUITA, nunca añade → no pelea con «silenciar».
+      const openDown = new Set(r.alerts.filter((a) => !a.resolved_at && a.type === 'node_down').map((a) => a.id));
+      setEmergencies((prev) => {
+        const next = prev.filter((e) => e.alertId == null || openDown.has(e.alertId));
+        return next.length === prev.length ? prev : next;
+      });
+    }).catch(() => {});
   }, []);
   const loadMap = useCallback(() => {
     api.settings().then((s) => setMapCfg({ key: s.maptilerKey, style: s.mapStyle })).catch(() => {});
@@ -97,13 +106,13 @@ export default function App() {
       setEmergencies((prev) => prev.filter((e) => map[e.nodeId]?.status !== 'up'));
     } else if (event === 'alert') {
       setAlertRefresh((x) => x + 1);
-      const ev = data as { nodeId: number | null; type: string; message: string };
+      const ev = data as { id?: number; nodeId: number | null; type: string; message: string };
       const cfg = alarmRef.current;
       const node = ev.nodeId != null ? nodesRef.current.find((n) => n.id === ev.nodeId) : undefined;
       const qualifies = cfg.enabled && ev.type === 'node_down' && !!node &&
         (INFRA_TYPES.has(node.type) || node.watched || cfg.allDevices);
       if (qualifies && node) {
-        setEmergencies((prev) => (prev.some((e) => e.nodeId === node.id) ? prev : [...prev, { nodeId: node.id, name: node.name, message: ev.message }]));
+        setEmergencies((prev) => (prev.some((e) => e.nodeId === node.id) ? prev : [...prev, { nodeId: node.id, name: node.name, message: ev.message, alertId: ev.id }]));
       }
     } else if (event === 'alert_resolved') {
       setAlertRefresh((x) => x + 1);
