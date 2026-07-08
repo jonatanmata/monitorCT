@@ -16,11 +16,13 @@ function computeEffCoords(nodes: ApiNode[]): Map<number, { lat: number; lng: num
   const containers = new Map<number, { lat: number; lng: number }>();
   for (const n of nodes) if (CONTAINER_TYPES.includes(n.type) && n.lat != null && n.lng != null) containers.set(n.id, { lat: n.lat, lng: n.lng });
   for (const n of nodes) {
-    if (n.lat != null && n.lng != null) { out.set(n.id, { lat: n.lat, lng: n.lng, inherited: false }); continue; }
-    if (n.containerId != null) {
+    // Un equipo dentro de una torre/rack ubicado SIEMPRE se apila en él (aunque tenga
+    // coordenadas propias): físicamente está en la torre, no suelto en el mapa.
+    if (n.containerId != null && !CONTAINER_TYPES.includes(n.type)) {
       const c = containers.get(n.containerId);
-      if (c) out.set(n.id, { lat: c.lat, lng: c.lng, inherited: true });
+      if (c) { out.set(n.id, { lat: c.lat, lng: c.lng, inherited: true }); continue; }
     }
+    if (n.lat != null && n.lng != null) out.set(n.id, { lat: n.lat, lng: n.lng, inherited: false });
   }
   return out;
 }
