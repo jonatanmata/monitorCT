@@ -49,6 +49,11 @@ export function TopologyCanvas({
   // reinyectar `measured` en cada nodo o el MINIMAPA no dibuja nada (usa node.measured).
   const [dimsTick, setDimsTick] = useState(0);
   const dimsRef = useRef(new Map<string, { width: number; height: number }>());
+  // Contenedores (rack/torre) colapsados: se muestra solo la cabecera con el nº de equipos.
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const toggleCollapse = useCallback((id: number) => {
+    setCollapsed((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  }, []);
 
   const openInsertMenu = useCallback((edgeId: string, x: number, y: number) => {
     setInsertMenu({ edgeId: parseInt(edgeId, 10), x, y });
@@ -94,7 +99,7 @@ export function TopologyCanvas({
         out.push({
           id: String(n.id), type: 'group', position: { x: n.posX, y: n.posY },
           selected: n.id === selectedNodeId, deletable: true, measured: dimsRef.current.get(String(n.id)),
-          data: { container: n, members, worst: worstByContainer.get(n.id) ?? 'unknown', onOpen: (id) => (onOpenContainer ? onOpenContainer(id) : onSelectNode(id)), onSelectMember: (id) => onSelectNode(id) },
+          data: { container: n, members, worst: worstByContainer.get(n.id) ?? 'unknown', collapsed: collapsed.has(n.id), onOpen: (id) => (onOpenContainer ? onOpenContainer(id) : onSelectNode(id)), onSelectMember: (id) => onSelectNode(id), onToggleCollapse: toggleCollapse },
         });
       } else if (!containerOf.has(n.id)) {
         // Nodo suelto (los miembros de un contenedor se dibujan dentro de la tarjeta).
@@ -107,7 +112,7 @@ export function TopologyCanvas({
     }
     return out;
     // dimsTick fuerza recompute cuando llegan las dimensiones medidas (para el minimapa).
-  }, [nodes, live, selectedNodeId, containerOf, worstByContainer, onOpenContainer, onSelectNode, dimsTick]);
+  }, [nodes, live, selectedNodeId, containerOf, worstByContainer, onOpenContainer, onSelectNode, toggleCollapse, collapsed, dimsTick]);
 
   const flowEdges: FlowEdge[] = useMemo(() => {
     // Extremo dibujado: si el nodo está en un contenedor, el enlace va a la tarjeta del contenedor.

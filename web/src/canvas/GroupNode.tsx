@@ -9,8 +9,10 @@ export type GroupNodeData = {
   container: ApiNode;
   members: GroupMember[];
   worst: 'up' | 'warning' | 'down' | 'unknown';
+  collapsed: boolean;
   onOpen: (id: number) => void;
   onSelectMember: (id: number) => void;
+  onToggleCollapse: (id: number) => void;
 };
 
 export type GroupFlowNode = Node<GroupNodeData, 'group'>;
@@ -20,16 +22,23 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function GroupNode({ data, selected }: NodeProps<GroupFlowNode>) {
-  const { container, members, worst, onOpen, onSelectMember } = data;
+  const { container, members, worst, collapsed, onOpen, onSelectMember, onToggleCollapse } = data;
   const meta = typeMeta(container.type);
   const worstColor = STATUS_COLOR[worst];
 
   return (
-    <div className={`group-card ${selected ? 'selected' : ''}`}>
+    <div className={`group-card ${selected ? 'selected' : ''} ${collapsed ? 'collapsed' : ''}`}>
       {/* Handles del contenedor (conectar el rack/torre como un todo). */}
       <Handle type="target" position={Position.Left} id="c" />
       <Handle type="source" position={Position.Right} id="c" />
       <div className="group-head">
+        <button
+          className="group-collapse"
+          title={collapsed ? 'Expandir equipos' : 'Colapsar equipos'}
+          onClick={(e) => { e.stopPropagation(); onToggleCollapse(container.id); }}
+        >
+          <Icon path={collapsed ? 'M9 6l6 6-6 6' : 'M6 9l6 6 6-6'} size={12} strokeWidth={2} />
+        </button>
         <span className="group-ico" style={{ color: meta.color }}>
           <Icon path={ICONS[meta.icon]} size={15} strokeWidth={1.8} />
         </span>
@@ -44,6 +53,7 @@ export function GroupNode({ data, selected }: NodeProps<GroupFlowNode>) {
           <Icon path="M9 18l6-6-6-6" size={12} strokeWidth={2} />
         </button>
       </div>
+      {!collapsed && (
       <div className="group-body">
         {members.length === 0 && <div className="group-empty">Vacío · añade equipos</div>}
         {members.map((m) => {
@@ -66,6 +76,7 @@ export function GroupNode({ data, selected }: NodeProps<GroupFlowNode>) {
           );
         })}
       </div>
+      )}
     </div>
   );
 }
