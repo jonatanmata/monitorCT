@@ -273,8 +273,12 @@ export function registerApiRoutes(app: FastifyInstance): void {
       `INSERT INTO nodes (type, name, pos_x, pos_y) VALUES (?, ?, ?, ?)`,
     );
     const insertEdge = db.prepare(
-      'INSERT INTO edges (source_id, target_id, label, capacity_mbps, source_interface) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO edges (source_id, target_id, label, capacity_mbps, source_interface, medium, fiber) VALUES (?, ?, ?, ?, ?, ?, ?)',
     );
+
+    // Si el enlace es de fibra, repartir la longitud entre los N+1 tramos; el primero
+    // conserva el puerto OLT, los conectores se reparten y cada tramo cae en 1/(n+1).
+    const origFiber = edge.medium === 'fiber' ? (safeParse(edge.fiber) as { lengthM?: number; connectors?: number; dbPerKm?: number; cableType?: string; oltPort?: string } | null) : null;
 
     const result = db.transaction(() => {
       const newNodeIds: number[] = [];
@@ -290,14 +294,27 @@ export function registerApiRoutes(app: FastifyInstance): void {
       db.prepare('DELETE FROM edges WHERE id = ?').run(edgeId);
 
       const seq = [edge.source_id, ...newNodeIds, edge.target_id];
+      const segments = seq.length - 1;
       const newEdgeIds: number[] = [];
-      for (let i = 0; i < seq.length - 1; i++) {
+      for (let i = 0; i < segments; i++) {
         const isFirst = i === 0;
+        let fiberJson: string | null = isFirst ? edge.fiber : null;
+        if (origFiber) {
+          const seg: Record<string, unknown> = {
+            lengthM: origFiber.lengthM != null ? Math.round(origFiber.lengthM / segments) : undefined,
+            connectors: origFiber.connectors != null ? Math.round(origFiber.connectors / segments) : undefined,
+            dbPerKm: origFiber.dbPerKm, cableType: origFiber.cableType,
+            oltPort: isFirst ? origFiber.oltPort : undefined, // solo el tramo pegado a la OLT
+          };
+          fiberJson = JSON.stringify(seg);
+        }
         const r = insertEdge.run(
           seq[i], seq[i + 1],
           isFirst ? edge.label : '',
           isFirst ? edge.capacity_mbps : null,
           isFirst ? edge.source_interface : '',
+          edge.medium ?? '',
+          fiberJson,
         );
         newEdgeIds.push(Number(r.lastInsertRowid));
       }
@@ -305,7 +322,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
     })();
 
     const nodes = (db.prepare(`SELECT * FROM nodes WHERE id IN (${result.newNodeIds.map(() => '?').join(',')})`).all(...result.newNodeIds) as NodeRow[]).map(nodeToJson);
-    const edges = db.prepare(`SELECT * FROM edges WHERE id IN (${result.newEdgeIds.map(() => '?').join(',')})`).all(...result.newEdgeIds);
+    const edges = (db.prepare(`SELECT * FROM edges WHERE id IN (${result.newEdgeIds.map(() => '?').join(',')})`).all(...result.newEdgeIds) as EdgeRow[]).map(edgeToJson);
     return { nodes, edges };
   });
 
