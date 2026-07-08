@@ -40,6 +40,7 @@ interface Props {
   live: Record<number, LiveNode>;
   maptilerKey: string;
   mapStyle: string;
+  selectedNodeId: number | null;
   onSelectNode: (id: number) => void;
   onSelectEdge: (id: number) => void;
   onChanged: () => void;
@@ -77,7 +78,7 @@ function paintMarker(el: HTMLElement, node: ApiNode, live: LiveNode | undefined)
   ring.style.animation = down ? 'pulse 1.4s infinite' : 'none';
 }
 
-export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, onSelectNode, onSelectEdge, onChanged, onHelp }: Props) {
+export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, selectedNodeId, onSelectNode, onSelectEdge, onChanged, onHelp }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement }>>(new Map());
@@ -111,6 +112,9 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, onSe
       map.addSource('edges', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: 'edges-base', type: 'line', source: 'edges', paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.5 } });
       map.addLayer({ id: 'edges-flow', type: 'line', source: 'edges', paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [0, 4, 3] } });
+      // Camino PON resaltado (OLT→ONU) cuando se selecciona una ONU.
+      map.addSource('pon-path', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({ id: 'pon-path', type: 'line', source: 'pon-path', paint: { 'line-color': '#8b5bff', 'line-width': 5, 'line-opacity': 0.85, 'line-blur': 1 } }, 'edges-flow');
       map.on('click', 'edges-base', (e) => {
         const id = e.features?.[0]?.properties?.id;
         if (id != null) cbRef.current.onSelectEdge(Number(id));
@@ -185,6 +189,26 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, onSe
     const src = map.getSource('edges') as maplibregl.GeoJSONSource | undefined;
     src?.setData({ type: 'FeatureCollection', features });
   }, [live, nodes, edges, ready]);
+
+  // Resaltar el camino PON OLT→ONU al seleccionar una ONU.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const src = map.getSource('pon-path') as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    const sel = nodes.find((n) => n.id === selectedNodeId);
+    if (!sel || sel.type !== 'onu') { src.setData({ type: 'FeatureCollection', features: [] }); return; }
+    let alive = true;
+    api.ponBudget(sel.id).then((b) => {
+      if (!alive) return;
+      const eff = computeEffCoords(nodes);
+      const coords = b.path.map((id) => eff.get(id)).filter(Boolean).map((c) => [c!.lng, c!.lat]);
+      src.setData(coords.length >= 2
+        ? { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } }] }
+        : { type: 'FeatureCollection', features: [] });
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [selectedNodeId, nodes, ready]);
 
   const effAll = computeEffCoords(nodes);
   const unplaced = nodes.filter((n) => !effAll.has(n.id));

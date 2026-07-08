@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS nodes (
   lat REAL,
   lng REAL,
   -- Pertenencia a un contenedor (rack/torre); null = suelto
-  container_id INTEGER REFERENCES nodes(id) ON DELETE SET NULL
+  container_id INTEGER REFERENCES nodes(id) ON DELETE SET NULL,
+  -- Metadatos por tipo (JSON): puertos OLT, ratio splitter NAP, sensibilidad ONU, etc.
+  meta TEXT
 );
 
 CREATE TABLE IF NOT EXISTS edges (
@@ -31,7 +33,10 @@ CREATE TABLE IF NOT EXISTS edges (
   -- Capacidad real del enlace en Mbps (para % de utilización)
   capacity_mbps REAL,
   -- Interfaz del equipo origen que transporta este enlace (ej. ether1, wlan1) para mapear tráfico
-  source_interface TEXT NOT NULL DEFAULT ''
+  source_interface TEXT NOT NULL DEFAULT '',
+  -- Medio físico del enlace ('', 'fiber', 'copper', 'wireless') y datos de fibra (JSON) para PON
+  medium TEXT NOT NULL DEFAULT '',
+  fiber TEXT
 );
 
 -- Series de tiempo. node_id o edge_id según a qué pertenece la métrica.

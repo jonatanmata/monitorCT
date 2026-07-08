@@ -1,7 +1,8 @@
 export type NodeType =
   | 'monitor' | 'gateway-isp' | 'router' | 'mikrotik' | 'switch'
   | 'ptp-mimosa' | 'ap-ubiquiti' | 'litebeam' | 'cliente'
-  | 'torre' | 'rack';
+  | 'torre' | 'rack'
+  | 'olt' | 'onu' | 'nap' | 'poste';
 
 export interface ApiNode {
   id: number;
@@ -21,6 +22,20 @@ export interface ApiNode {
   lng: number | null;
   /** Contenedor (rack/torre) al que pertenece (null = suelto). */
   containerId: number | null;
+  /** Metadatos por tipo (puertos OLT, ratio splitter NAP, sensibilidad ONU, etc.). */
+  meta: unknown;
+}
+
+export interface FiberInfo {
+  cableType?: string;
+  buffers?: number;
+  hilos?: number;
+  hiloColor?: string;
+  lengthM?: number;
+  lengthAuto?: boolean;
+  dbPerKm?: number;
+  connectors?: number;
+  oltPort?: string;
 }
 
 export interface ApiEdge {
@@ -30,7 +45,22 @@ export interface ApiEdge {
   label: string;
   capacity_mbps: number | null;
   source_interface: string;
+  medium: string;
+  fiber: FiberInfo | null;
 }
+
+/** Metadatos tipados por tipo de nodo. */
+export interface OltMeta { ports?: { name: string; txDbm: number }[] }
+export interface NapMeta { splitRatio?: number }
+export interface OnuMeta { rxSensitivityDbm?: number }
+
+/** Código de colores estándar TIA-598 para hilos/buffers de fibra. */
+export const TIA_COLORS: { name: string; hex: string }[] = [
+  { name: 'Azul', hex: '#2f6fe0' }, { name: 'Naranja', hex: '#f08a24' }, { name: 'Verde', hex: '#2faa4a' },
+  { name: 'Marrón', hex: '#8a5a2b' }, { name: 'Gris', hex: '#9aa4b2' }, { name: 'Blanco', hex: '#f3f4f6' },
+  { name: 'Rojo', hex: '#e0403b' }, { name: 'Negro', hex: '#2b2f38' }, { name: 'Amarillo', hex: '#e7c93a' },
+  { name: 'Violeta', hex: '#8b5bff' }, { name: 'Rosado', hex: '#f06ca8' }, { name: 'Aqua', hex: '#3fb6c8' },
+];
 
 export interface LiveNode {
   status: 'up' | 'warning' | 'down' | 'unknown';
@@ -86,6 +116,10 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   'cliente': 'Cliente (LiteBeam)',
   'torre': 'Torre',
   'rack': 'Rack',
+  'olt': 'OLT',
+  'onu': 'ONU',
+  'nap': 'NAP / Caja',
+  'poste': 'Poste',
 };
 
 export const NODE_TYPE_ICONS: Record<NodeType, string> = {
@@ -100,6 +134,10 @@ export const NODE_TYPE_ICONS: Record<NodeType, string> = {
   'cliente': '🏠',
   'torre': '🗼',
   'rack': '🗄️',
+  'olt': '🔌',
+  'onu': '📦',
+  'nap': '🗃️',
+  'poste': '📍',
 };
 
 /** Contenedores (agrupan equipos por pertenencia, no por enlaces). */
@@ -107,7 +145,8 @@ export const CONTAINER_TYPES: NodeType[] = ['torre', 'rack'];
 
 /** Tipos que el usuario puede añadir desde la paleta (el monitor es singleton y automático). */
 export const ADDABLE_TYPES: NodeType[] = [
-  'gateway-isp', 'router', 'mikrotik', 'switch', 'ptp-mimosa', 'ap-ubiquiti', 'litebeam', 'cliente', 'torre', 'rack',
+  'gateway-isp', 'router', 'mikrotik', 'switch', 'ptp-mimosa', 'ap-ubiquiti', 'litebeam', 'cliente',
+  'olt', 'onu', 'nap', 'poste', 'torre', 'rack',
 ];
 
 /** Tipos insertables al «romper el hilo» de un enlace (los contenedores no se insertan en enlaces). */

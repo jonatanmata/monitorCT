@@ -19,14 +19,17 @@ db.exec(schema);
 export type NodeType =
   | 'monitor' | 'gateway-isp' | 'router' | 'mikrotik' | 'switch'
   | 'ptp-mimosa' | 'ap-ubiquiti' | 'litebeam' | 'cliente'
-  | 'torre' | 'rack';
+  | 'torre' | 'rack'
+  | 'olt' | 'onu' | 'nap' | 'poste';
 export const NODE_TYPES: NodeType[] = [
   'monitor', 'gateway-isp', 'router', 'mikrotik', 'switch',
   'ptp-mimosa', 'ap-ubiquiti', 'litebeam', 'cliente',
-  'torre', 'rack',
+  'torre', 'rack', 'olt', 'onu', 'nap', 'poste',
 ];
 /** Contenedores: agrupan otros equipos por referencia (container_id), no por enlaces. */
 export const CONTAINER_TYPES: NodeType[] = ['torre', 'rack'];
+/** Pasivos: no se monitorean (fibra, cajas, postes, switch no gestionado). */
+export const PASSIVE_TYPES: NodeType[] = ['nap', 'poste', 'switch', 'rack', 'torre'];
 
 /**
  * Migración idempotente: las bases creadas antes de añadir el tipo 'monitor'
@@ -81,6 +84,11 @@ addColumnIfMissing('nodes', 'lat', 'REAL');
 addColumnIfMissing('nodes', 'lng', 'REAL');
 // Contenedores: pertenencia a un rack/torre (null = suelto). SET NULL al borrar el contenedor.
 addColumnIfMissing('nodes', 'container_id', 'INTEGER REFERENCES nodes(id) ON DELETE SET NULL');
+// FTTH/PON: metadatos por tipo (JSON): puertos OLT, ratio del splitter NAP, sensibilidad ONU, etc.
+addColumnIfMissing('nodes', 'meta', 'TEXT');
+// Enlaces: medio físico + datos de fibra (JSON) para el cálculo de potencia PON.
+addColumnIfMissing('edges', 'medium', "TEXT NOT NULL DEFAULT ''");
+addColumnIfMissing('edges', 'fiber', 'TEXT');
 
 /** Garantiza que exista el nodo Monitor (raíz singleton = este PC). No borrable. */
 export function ensureMonitorNode(): void {
@@ -108,6 +116,7 @@ export interface NodeRow {
   lat: number | null;
   lng: number | null;
   container_id: number | null;
+  meta: string | null;
 }
 
 export interface EdgeRow {
@@ -117,6 +126,8 @@ export interface EdgeRow {
   label: string;
   capacity_mbps: number | null;
   source_interface: string;
+  medium: string;
+  fiber: string | null;
 }
 
 export interface Credentials {

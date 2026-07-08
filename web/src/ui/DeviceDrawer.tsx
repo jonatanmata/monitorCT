@@ -6,6 +6,19 @@ import { Icon, ICONS, TYPE_META, typeMeta } from './meta';
 import { Sparkline } from './Sparkline';
 import { RouterosFlow } from './RouterosFlow';
 import { ConfigAudit } from './ConfigAudit';
+import { OltPorts } from './OltPorts';
+import { OnuBudget } from './OnuBudget';
+import type { NapMeta, FiberInfo, OltMeta } from '../types';
+import { TIA_COLORS } from '../types';
+
+const FTTH_TYPES = ['olt', 'onu', 'nap', 'poste'];
+/** Distancia en metros entre dos coordenadas (haversine). */
+function haversineM(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371000, toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat), dLng = toRad(bLng - aLng);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(s)));
+}
 
 const STATUS = {
   up: { label: 'En línea', color: 'var(--up)', soft: 'var(--upSoft)' },
@@ -14,7 +27,7 @@ const STATUS = {
   unknown: { label: 'Sin datos', color: 'var(--muted)', soft: 'var(--panel3)' },
 } as const;
 
-type Tab = 'config' | 'metrics' | 'flow' | 'audit' | 'tdr' | 'inside';
+type Tab = 'config' | 'metrics' | 'flow' | 'audit' | 'tdr' | 'inside' | 'ports' | 'pon';
 
 interface CablePair { pair: string; status: string; distanceM: number | null }
 interface CableIface { name: string; supported: boolean; status?: string; note?: string; pairs?: CablePair[] }
@@ -53,6 +66,9 @@ export function NodeDrawer({ node, live, nodes = [], liveAll = {}, onChanged, on
   const isMonitor = node.type === 'monitor';
   const isMikrotik = node.type === 'mikrotik';
   const isContainer = CONTAINER_TYPES.includes(node.type);
+  const isOlt = node.type === 'olt';
+  const isOnu = node.type === 'onu';
+  const isNap = node.type === 'nap';
   const isRouterLike = isMikrotik || node.type === 'router';
   const isSnmp = ['ptp-mimosa', 'ap-ubiquiti', 'litebeam', 'cliente', 'router'].includes(node.type);
   const status = isMonitor ? 'up' : (live?.status ?? 'unknown');
@@ -67,12 +83,14 @@ export function NodeDrawer({ node, live, nodes = [], liveAll = {}, onChanged, on
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; detail: string }> | null>(null);
   const [testing, setTesting] = useState(false);
   const [watched, setWatchedState] = useState(node.watched);
+  const [splitRatio, setSplitRatio] = useState<number>(((node.meta ?? {}) as NapMeta).splitRatio ?? 8);
   const [available, setAvailable] = useState<string[]>([]);
   const [cable, setCable] = useState<{ supported: boolean; note?: string; results?: CableIface[] } | null>(null);
   const [cableTesting, setCableTesting] = useState(false);
 
   useEffect(() => {
     setTab('config'); setTestResult(null); setCable(null); setWatchedState(node.watched);
+    setSplitRatio(((node.meta ?? {}) as NapMeta).splitRatio ?? 8);
     setForm({
       name: node.name, ip: node.ip, type: node.type, routerosUser: '', routerosPass: '',
       snmpCommunity: node.snmpCommunity, probeTargets: node.probeTargets.join(', '), probeSrcAddresses: node.probeSrcAddresses.join(', '),
@@ -86,6 +104,7 @@ export function NodeDrawer({ node, live, nodes = [], liveAll = {}, onChanged, on
       name: form.name, ip: form.ip, type: form.type,
       probeTargets: parseList(form.probeTargets), probeSrcAddresses: parseList(form.probeSrcAddresses),
       credentials: { routerosUser: form.routerosUser, routerosPass: form.routerosPass, snmpCommunity: form.snmpCommunity },
+      ...(isNap ? { meta: { splitRatio } } : {}),
     });
     onChanged();
   };
@@ -118,6 +137,8 @@ export function NodeDrawer({ node, live, nodes = [], liveAll = {}, onChanged, on
 
   const tabs: { k: Tab; label: string }[] = [{ k: 'config', label: 'Configuración' }];
   if (isContainer) tabs.push({ k: 'inside', label: `Interior (${members.length})` });
+  if (isOlt) tabs.push({ k: 'ports', label: 'Puertos PON' });
+  if (isOnu) tabs.push({ k: 'pon', label: 'PON' });
   if (!isMonitor && !isContainer) tabs.push({ k: 'metrics', label: 'Métricas' });
   if (isRouterLike) tabs.push({ k: 'flow', label: 'Flujo RouterOS' });
   if (isMikrotik) tabs.push({ k: 'audit', label: 'Auditoría' });
@@ -180,6 +201,18 @@ export function NodeDrawer({ node, live, nodes = [], liveAll = {}, onChanged, on
                 )}
                 {node.type === 'switch' && (
                   <div className="status-line pending" style={{ marginTop: 0 }}>Switch no administrable: su cable se diagnostica desde el puerto del MikroTik vecino.</div>
+                )}
+                {isNap && (
+                  <label className="field">
+                    <span className="field-label">Splitter (ratio)</span>
+                    <select className="inp sans" value={splitRatio} onChange={(e) => setSplitRatio(parseInt(e.target.value, 10))}>
+                      {[2, 4, 8, 16, 32, 64].map((r) => <option key={r} value={r}>1:{r}</option>)}
+                    </select>
+                    <span style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>La pérdida del splitter se resta en el cálculo de potencia PON de las ONU que cuelgan de esta caja.</span>
+                  </label>
+                )}
+                {node.type === 'poste' && (
+                  <div className="status-line pending" style={{ marginTop: 0 }}>Poste: elemento de planta externa (referencia). Sitúalo en el mapa por dónde pasa la fibra.</div>
                 )}
               </>
             )}
@@ -267,6 +300,9 @@ export function NodeDrawer({ node, live, nodes = [], liveAll = {}, onChanged, on
           </div>
         )}
 
+        {tab === 'ports' && <OltPorts node={node} onChanged={onChanged} />}
+        {tab === 'pon' && <OnuBudget node={node} />}
+
         {tab === 'flow' && <RouterosFlow nodeId={node.id} onHelp={() => onHelp('flow')} />}
 
         {tab === 'audit' && <ConfigAudit nodeId={node.id} />}
@@ -321,10 +357,18 @@ export function EdgeDrawer({ edge, nodes, onChanged, onDeleted, onClose }: {
   // El MikroTik puede estar en cualquier extremo del enlace: sus puertos y la utilización
   // se leen desde ahí sin importar la dirección en que se dibujó el enlace.
   const mkNode = source?.type === 'mikrotik' ? source : target?.type === 'mikrotik' ? target : undefined;
+  const isFiberLink = !!(source && target && (FTTH_TYPES.includes(source.type) || FTTH_TYPES.includes(target.type)));
+  const oltEndpoint = source?.type === 'olt' ? source : target?.type === 'olt' ? target : undefined;
   const [form, setForm] = useState({ label: edge.label, capacityMbps: edge.capacity_mbps?.toString() ?? '', sourceInterface: edge.source_interface });
+  const [medium, setMedium] = useState(edge.medium || (isFiberLink ? 'fiber' : ''));
+  const [fiber, setFiber] = useState<FiberInfo>(edge.fiber ?? {});
   const [ifaces, setIfaces] = useState<{ name: string; type: string; running: boolean; rxMbps: number; txMbps: number }[] | null>(null);
   const [ifaceBusy, setIfaceBusy] = useState(false);
   const [ifaceNote, setIfaceNote] = useState<string | null>(null);
+
+  const autoLenM = (source?.lat != null && source.lng != null && target?.lat != null && target.lng != null)
+    ? haversineM(source.lat, source.lng, target.lat, target.lng) : null;
+  const setFiberField = (patch: Partial<FiberInfo>) => setFiber((f) => ({ ...f, ...patch }));
 
   const loadIfaces = async () => {
     if (!mkNode) return;
@@ -339,13 +383,21 @@ export function EdgeDrawer({ edge, nodes, onChanged, onDeleted, onClose }: {
 
   useEffect(() => {
     setForm({ label: edge.label, capacityMbps: edge.capacity_mbps?.toString() ?? '', sourceInterface: edge.source_interface });
+    setMedium(edge.medium || (isFiberLink ? 'fiber' : ''));
+    setFiber(edge.fiber ?? {});
     setIfaces(null); setIfaceNote(null);
     if (mkNode) void loadIfaces();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [edge.id]);
 
   const save = async () => {
-    await api.updateEdge(edge.id, { label: form.label, capacityMbps: form.capacityMbps ? parseFloat(form.capacityMbps) : null, sourceInterface: form.sourceInterface });
+    // Longitud automática por haversine si el usuario no la fijó a mano.
+    const fib = { ...fiber };
+    if (medium === 'fiber' && (fib.lengthAuto || fib.lengthM == null) && autoLenM != null) { fib.lengthM = autoLenM; fib.lengthAuto = true; }
+    await api.updateEdge(edge.id, {
+      label: form.label, capacityMbps: form.capacityMbps ? parseFloat(form.capacityMbps) : null, sourceInterface: form.sourceInterface,
+      medium, fiber: medium === 'fiber' ? fib : null,
+    });
     onChanged();
   };
 
@@ -389,12 +441,70 @@ export function EdgeDrawer({ edge, nodes, onChanged, onDeleted, onClose }: {
             <input className="inp" style={{ marginTop: 6 }} value={form.sourceInterface} onChange={(e) => setForm({ ...form, sourceInterface: e.target.value })} placeholder="o escribe el nombre" />
           )}
         </label>
+
+        {/* Medio físico */}
+        <label className="field">
+          <span className="field-label">Medio físico</span>
+          <select className="inp sans" value={medium} onChange={(e) => setMedium(e.target.value)}>
+            <option value="">Inalámbrico / sin especificar</option>
+            <option value="fiber">Fibra óptica</option>
+            <option value="copper">Cobre (UTP)</option>
+          </select>
+        </label>
+
+        {/* Fibra: datos para el cálculo de potencia PON */}
+        {medium === 'fiber' && (
+          <div style={{ background: 'var(--panel2)', border: '1px solid var(--border)', borderRadius: 11, padding: '12px 13px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="field-label">Cable de fibra</div>
+            {oltEndpoint && (
+              <label className="field"><span className="field-label">Puerto PON de la OLT ({oltEndpoint.name})</span>
+                <select className="inp sans" value={fiber.oltPort ?? ''} onChange={(e) => setFiberField({ oltPort: e.target.value || undefined })}>
+                  <option value="">— elegir puerto —</option>
+                  {((oltEndpoint.meta ?? {}) as OltMeta).ports?.map((p) => <option key={p.name} value={p.name}>{p.name} · {p.txDbm} dBm</option>)}
+                </select>
+              </label>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <label className="field"><span className="field-label">Longitud (m)</span>
+                <input className="inp mono" type="number" value={fiber.lengthM ?? (autoLenM ?? '')} onChange={(e) => setFiberField({ lengthM: e.target.value ? parseFloat(e.target.value) : undefined, lengthAuto: false })} placeholder={autoLenM != null ? `${autoLenM} (auto)` : ''} /></label>
+              <label className="field"><span className="field-label">Conectores</span>
+                <input className="inp mono" type="number" value={fiber.connectors ?? ''} onChange={(e) => setFiberField({ connectors: e.target.value ? parseInt(e.target.value, 10) : undefined })} placeholder="2" /></label>
+            </div>
+            {autoLenM != null && (
+              <button className="btn" style={{ alignSelf: 'flex-start', padding: '4px 10px' }} onClick={() => setFiberField({ lengthM: autoLenM, lengthAuto: true })}>Usar distancia del mapa ({autoLenM} m)</button>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <label className="field"><span className="field-label">Buffers</span>
+                <input className="inp mono" type="number" value={fiber.buffers ?? ''} onChange={(e) => setFiberField({ buffers: e.target.value ? parseInt(e.target.value, 10) : undefined })} placeholder="12" /></label>
+              <label className="field"><span className="field-label">Hilos</span>
+                <input className="inp mono" type="number" value={fiber.hilos ?? ''} onChange={(e) => setFiberField({ hilos: e.target.value ? parseInt(e.target.value, 10) : undefined })} placeholder="24" /></label>
+            </div>
+            <div className="field-label">Color del hilo (TIA)</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {TIA_COLORS.map((c) => (
+                <button key={c.name} title={c.name} onClick={() => setFiberField({ hiloColor: c.name })}
+                  style={{ width: 26, height: 26, borderRadius: 6, background: c.hex, cursor: 'pointer', border: fiber.hiloColor === c.name ? '2px solid var(--accent)' : '1px solid var(--border2)' }} />
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <label className="field"><span className="field-label">Tipo de cable</span>
+                <input className="inp sans" value={fiber.cableType ?? ''} onChange={(e) => setFiberField({ cableType: e.target.value })} placeholder="ADSS, figura-8…" /></label>
+              <label className="field"><span className="field-label">dB / km</span>
+                <input className="inp mono" type="number" step="0.01" value={fiber.dbPerKm ?? ''} onChange={(e) => setFiberField({ dbPerKm: e.target.value ? parseFloat(e.target.value) : undefined })} placeholder="0.35" /></label>
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 9, marginTop: 4 }}>
           <button className="btn primary" style={{ flex: 1 }} onClick={save}>Guardar</button>
           <button className="btn danger" onClick={() => { if (confirm('¿Eliminar este enlace?')) void api.deleteEdge(edge.id).then(onDeleted); }}>Eliminar</button>
         </div>
-        <div style={{ marginTop: 6 }} className="field-label">Utilización del enlace (24 h)</div>
-        <Sparkline edgeId={edge.id} metric="utilization_pct" hoursBack={24} />
+        {medium !== 'fiber' && (
+          <>
+            <div style={{ marginTop: 6 }} className="field-label">Utilización del enlace (24 h)</div>
+            <Sparkline edgeId={edge.id} metric="utilization_pct" hoursBack={24} />
+          </>
+        )}
       </div>
     </DrawerChrome>
   );

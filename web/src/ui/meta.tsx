@@ -17,6 +17,10 @@ export const ICONS = {
   client: 'M3 10l9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 21v-7h6v7',
   torre: 'M12 2v20M7 22l5-14 5 14M9 8h6M8 12h8M6.5 16h11',
   rack: 'M4 3h16v18H4zM4 8h16M4 13h16M4 18h16M7 5.5h.01M7 10.5h.01M7 15.5h.01',
+  olt: 'M4 5h16v6H4zM4 13h16v6H4zM7 8h.01M7 16h.01M11 8h1M11 16h1M15 8h3M15 16h3',
+  onu: 'M4 7h16v10H4zM8 7v10M4 11h4M15 10h2M15 13h2',
+  nap: 'M5 3h14v18H5zM5 12h14M9 7h6M9 16h6',
+  poste: 'M12 2v20M8 22h8M12 5h7M12 9h5M12 5L19 3M12 9l5-2',
 } as const;
 
 export type IconKey = keyof typeof ICONS;
@@ -40,6 +44,10 @@ export const TYPE_META: Record<NodeType, TypeMeta> = {
   'cliente': { icon: 'client', color: '#aab6cc', label: 'Cliente' },
   'torre': { icon: 'torre', color: '#57c7d4', label: 'Torre' },
   'rack': { icon: 'rack', color: '#8b5bff', label: 'Rack' },
+  'olt': { icon: 'olt', color: '#4c8dff', label: 'OLT' },
+  'onu': { icon: 'onu', color: '#33cc7a', label: 'ONU' },
+  'nap': { icon: 'nap', color: '#f5b13d', label: 'NAP / Caja' },
+  'poste': { icon: 'poste', color: '#8a5a2b', label: 'Poste' },
 };
 
 /** Metadatos del tipo con fallback (evita crash si el frontend es más viejo que un tipo nuevo). */

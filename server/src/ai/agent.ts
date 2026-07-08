@@ -98,7 +98,7 @@ ${topo || '(sin nodos configurados aún)'}
 Enlaces:
 ${links || '(sin enlaces configurados aún)'}
 
-Si un nodo falla, todo lo que cuelga aguas abajo de él falla también. Razona siempre sobre este grafo: busca el nodo/enlace más cercano al origen cuyos descendientes comparten el síntoma. OJO: el grafo es NO dirigido para efectos de dependencia — la dirección de la flecha (origen→destino) refleja cómo se dibujó el enlace y puede estar invertida; NO la uses para inferir quién está aguas arriba. "Aguas arriba" es el equipo que queda entre otro y el resto de la red (más cerca del gateway/monitor por conectividad), no el que figure como "origen".
+La red puede tener una capa FTTH/PON: una OLT con puertos ópticos alimenta por fibra (a través de cajas NAP con splitters 1:N) a las ONU de los clientes. Los pasivos (NAP, poste, fibra) no se monitorean; si cae una OLT, todas sus ONU aguas abajo caen. Si un nodo falla, todo lo que cuelga aguas abajo de él falla también. Razona siempre sobre este grafo: busca el nodo/enlace más cercano al origen cuyos descendientes comparten el síntoma. OJO: el grafo es NO dirigido para efectos de dependencia — la dirección de la flecha (origen→destino) refleja cómo se dibujó el enlace y puede estar invertida; NO la uses para inferir quién está aguas arriba. "Aguas arriba" es el equipo que queda entre otro y el resto de la red (más cerca del gateway/monitor por conectividad), no el que figure como "origen".
 
 El nodo de tipo "monitor" (💻 PC de monitoreo) es la raíz del grafo: es el propio PC desde donde corre este sistema y desde donde salen las sondas del origen "pc" hacia internet. La red se construye conectándolo al primer equipo y de ahí hacia afuera.
 

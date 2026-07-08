@@ -12,7 +12,7 @@ function makeTopo(down: number[]): Topo {
     (children.get(s) ?? children.set(s, []).get(s)!).push(t);
   }
   const name = new Map<number, string>([[1, 'Monitor'], [2, 'RB-Core'], [3, 'PTP-cerca'], [4, 'PTP-lejos'], [5, 'AP'], [6, 'Cliente'], [7, 'Switch']]);
-  return { name, parent, children, openDown: new Set(down) };
+  return { name, parent, children, openDown: new Set(down), transparent: new Set<number>() };
 }
 
 describe('agrupación por causa raíz', () => {
@@ -65,9 +65,22 @@ describe('jerarquía por distancia al Monitor (independiente de la dirección de
   it('con el enlace al revés, la raíz de la caída sigue siendo el nodo más cercano al Monitor', () => {
     // Enlace dibujado Mimosa(3)→MikroTik(2) (al revés). Caen 2,3,4 → raíz debe ser 2 (el más cerca del Monitor).
     const { parent, children } = buildHierarchy(reversed, 1);
-    const topo: Topo = { name: new Map(), parent, children, openDown: new Set([2, 3, 4]) };
+    const topo: Topo = { name: new Map(), parent, children, openDown: new Set([2, 3, 4]), transparent: new Set() };
     expect(rootOf(4, topo)).toBe(2);
     expect(rootOf(3, topo)).toBe(2);
     expect(downstreamCasualties(2, topo).sort()).toEqual([3, 4]);
+  });
+});
+
+describe('causa raíz atravesando nodos pasivos (fibra/NAP)', () => {
+  // Monitor(1) → OLT(2) → NAP(3, pasivo) → ONU(4), ONU(5). El NAP nunca cae.
+  const edges = [{ source_id: 1, target_id: 2 }, { source_id: 2, target_id: 3 }, { source_id: 3, target_id: 4 }, { source_id: 3, target_id: 5 }];
+  it('caída de la OLT agrupa las ONUs aunque el NAP (pasivo) esté en medio', () => {
+    const { parent, children } = buildHierarchy(edges, 1);
+    // Caen OLT(2), ONU(4), ONU(5); el NAP(3) es transparente (nunca en openDown).
+    const topo: Topo = { name: new Map(), parent, children, openDown: new Set([2, 4, 5]), transparent: new Set([3]) };
+    expect(rootOf(4, topo)).toBe(2); // sube ONU→NAP(transparente)→OLT(caída)
+    expect(rootOf(5, topo)).toBe(2);
+    expect(downstreamCasualties(2, topo).sort()).toEqual([4, 5]); // baja OLT→NAP(transparente)→ONUs
   });
 });

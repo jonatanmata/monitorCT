@@ -11,6 +11,7 @@ import { aiAvailable, resolveApiKey, saveApiKey, clearApiKey, testApiKey, getAiM
 import { getTelegramConfigSafe, saveTelegramConfig, clearTelegramConfig, testTelegram, detectChatIds, setWatched, isWatched } from '../alerts/telegram.js';
 import { syncTelegramPoller, stopTelegramPoller } from '../alerts/telegram-poller.js';
 import { getUpdateStatus, applyUpdate, setAutoUpdate } from '../update.js';
+import { computePonBudget } from '../pon/budget.js';
 
 interface NodeBody {
   type: NodeRow['type'];
@@ -27,6 +28,7 @@ interface NodeBody {
   lat?: number | null;
   lng?: number | null;
   containerId?: number | null; // rack/torre al que pertenece (null = suelto)
+  meta?: unknown;              // metadatos por tipo (puertos OLT, ratio NAP, etc.)
 }
 
 const TYPE_DEFAULT_NAME: Record<NodeType, string> = {
@@ -41,6 +43,10 @@ const TYPE_DEFAULT_NAME: Record<NodeType, string> = {
   'cliente': 'Cliente',
   'torre': 'Torre',
   'rack': 'Rack',
+  'olt': 'OLT',
+  'onu': 'ONU',
+  'nap': 'NAP / Caja',
+  'poste': 'Poste',
 };
 function defaultNameForType(type: NodeType): string {
   return TYPE_DEFAULT_NAME[type] ?? type;
@@ -80,6 +86,20 @@ function nodeToJson(n: NodeRow) {
     lat: n.lat,
     lng: n.lng,
     containerId: n.container_id,
+    meta: safeParse(n.meta),
+  };
+}
+
+function safeParse(s: string | null): unknown {
+  if (!s) return null;
+  try { return JSON.parse(s); } catch { return null; }
+}
+
+function edgeToJson(e: EdgeRow) {
+  return {
+    id: e.id, source_id: e.source_id, target_id: e.target_id,
+    label: e.label, capacity_mbps: e.capacity_mbps, source_interface: e.source_interface,
+    medium: e.medium ?? '', fiber: safeParse(e.fiber),
   };
 }
 
@@ -87,7 +107,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
   // ---------- Topología ----------
   app.get('/api/topology', async () => {
     const nodes = (db.prepare('SELECT * FROM nodes').all() as NodeRow[]).map(nodeToJson);
-    const edges = db.prepare('SELECT * FROM edges').all() as EdgeRow[];
+    const edges = (db.prepare('SELECT * FROM edges').all() as EdgeRow[]).map(edgeToJson);
     return { nodes, edges, live: allLiveNodes(), aiAvailable: aiAvailable() };
   });
 
@@ -99,8 +119,8 @@ export function registerApiRoutes(app: FastifyInstance): void {
     if (contErr) return reply.code(400).send({ error: contErr });
     const res = db
       .prepare(
-        `INSERT INTO nodes (type, name, ip, pos_x, pos_y, credentials_enc, probe_targets, probe_src_addresses, enabled, lat, lng, container_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO nodes (type, name, ip, pos_x, pos_y, credentials_enc, probe_targets, probe_src_addresses, enabled, lat, lng, container_id, meta)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         b.type, b.name, b.ip ?? '', b.posX ?? 0, b.posY ?? 0,
@@ -109,6 +129,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
         JSON.stringify(b.probeSrcAddresses ?? []),
         b.enabled === false ? 0 : 1,
         b.lat ?? null, b.lng ?? null, b.containerId ?? null,
+        b.meta !== undefined ? JSON.stringify(b.meta) : null,
       );
     const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(res.lastInsertRowid) as NodeRow;
     return nodeToJson(node);
@@ -138,6 +159,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
     const lng = 'lng' in body ? (b.lng ?? null) : existing.lng;
     const newType = b.type ?? existing.type;
     const containerId = 'containerId' in body ? (b.containerId ?? null) : existing.container_id;
+    const metaJson = 'meta' in body ? (b.meta != null ? JSON.stringify(b.meta) : null) : existing.meta;
 
     if ('containerId' in body) {
       const contErr = validateContainer(containerId, id, newType);
@@ -151,7 +173,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
 
     db.prepare(
       `UPDATE nodes SET type = ?, name = ?, ip = ?, pos_x = ?, pos_y = ?, credentials_enc = ?,
-       probe_targets = ?, probe_src_addresses = ?, enabled = ?, lat = ?, lng = ?, container_id = ? WHERE id = ?`,
+       probe_targets = ?, probe_src_addresses = ?, enabled = ?, lat = ?, lng = ?, container_id = ?, meta = ? WHERE id = ?`,
     ).run(
       newType,
       b.name ?? existing.name,
@@ -162,7 +184,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
       JSON.stringify(b.probeTargets ?? JSON.parse(existing.probe_targets)),
       JSON.stringify(b.probeSrcAddresses ?? JSON.parse(existing.probe_src_addresses)),
       b.enabled === undefined ? existing.enabled : b.enabled ? 1 : 0,
-      lat, lng, containerId,
+      lat, lng, containerId, metaJson,
       id,
     );
     const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(id) as NodeRow;
@@ -182,25 +204,39 @@ export function registerApiRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/edges', async (req) => {
-    const b = req.body as { sourceId: number; targetId: number; label?: string; capacityMbps?: number; sourceInterface?: string };
+    const b = req.body as { sourceId: number; targetId: number; label?: string; capacityMbps?: number; sourceInterface?: string; medium?: string; fiber?: unknown };
     const res = db
-      .prepare('INSERT INTO edges (source_id, target_id, label, capacity_mbps, source_interface) VALUES (?, ?, ?, ?, ?)')
-      .run(b.sourceId, b.targetId, b.label ?? '', b.capacityMbps ?? null, b.sourceInterface ?? '');
-    return db.prepare('SELECT * FROM edges WHERE id = ?').get(res.lastInsertRowid);
+      .prepare('INSERT INTO edges (source_id, target_id, label, capacity_mbps, source_interface, medium, fiber) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(b.sourceId, b.targetId, b.label ?? '', b.capacityMbps ?? null, b.sourceInterface ?? '', b.medium ?? '', b.fiber != null ? JSON.stringify(b.fiber) : null);
+    return edgeToJson(db.prepare('SELECT * FROM edges WHERE id = ?').get(res.lastInsertRowid) as EdgeRow);
   });
 
   app.put('/api/edges/:id', async (req, reply) => {
     const id = parseInt((req.params as { id: string }).id, 10);
     const existing = db.prepare('SELECT * FROM edges WHERE id = ?').get(id) as EdgeRow | undefined;
     if (!existing) return reply.code(404).send({ error: 'Arista no encontrada' });
-    const b = req.body as { label?: string; capacityMbps?: number | null; sourceInterface?: string };
-    db.prepare('UPDATE edges SET label = ?, capacity_mbps = ?, source_interface = ? WHERE id = ?').run(
+    const b = req.body as { label?: string; capacityMbps?: number | null; sourceInterface?: string; medium?: string; fiber?: unknown };
+    const body = req.body as Record<string, unknown>;
+    const fiber = 'fiber' in body ? (b.fiber != null ? JSON.stringify(b.fiber) : null) : existing.fiber;
+    db.prepare('UPDATE edges SET label = ?, capacity_mbps = ?, source_interface = ?, medium = ?, fiber = ? WHERE id = ?').run(
       b.label ?? existing.label,
       b.capacityMbps === undefined ? existing.capacity_mbps : b.capacityMbps,
       b.sourceInterface ?? existing.source_interface,
+      b.medium ?? existing.medium ?? '',
+      fiber,
       id,
     );
-    return db.prepare('SELECT * FROM edges WHERE id = ?').get(id);
+    return edgeToJson(db.prepare('SELECT * FROM edges WHERE id = ?').get(id) as EdgeRow);
+  });
+
+  /** Presupuesto óptico PON: potencia estimada recibida en una ONU (breakdown por salto). */
+  app.get('/api/pon/budget/:onuId', async (req) => {
+    const onuId = parseInt((req.params as { onuId: string }).onuId, 10);
+    const nodes = (db.prepare('SELECT id, type, name, meta FROM nodes').all() as { id: number; type: string; name: string; meta: string | null }[])
+      .map((n) => ({ id: n.id, type: n.type, name: n.name, meta: safeParse(n.meta) }));
+    const edges = (db.prepare('SELECT source_id, target_id, fiber FROM edges').all() as { source_id: number; target_id: number; fiber: string | null }[])
+      .map((e) => ({ source_id: e.source_id, target_id: e.target_id, fiber: safeParse(e.fiber) as { lengthM?: number; dbPerKm?: number; connectors?: number; oltPort?: string } | null }));
+    return computePonBudget(nodes, edges, onuId);
   });
 
   app.delete('/api/edges/:id', async (req) => {

@@ -53,17 +53,24 @@ function buttonsFor(alertId: number | null, nodeId: number | null): InlineButton
   return row.length ? [row] : undefined;
 }
 
-export interface Topo { name: Map<number, string>; parent: Map<number, number>; children: Map<number, number[]>; openDown: Set<number> }
+export interface Topo {
+  name: Map<number, string>; parent: Map<number, number>; children: Map<number, number[]>;
+  openDown: Set<number>;
+  /** Nodos pasivos (sin IP: fibra, NAP, poste, switch, contenedores): nunca caen y actúan como "cable". */
+  transparent: Set<number>;
+}
 function loadTopo(): Topo {
-  const nodes = db.prepare('SELECT id, name, type FROM nodes').all() as { id: number; name: string; type: string }[];
+  const nodes = db.prepare('SELECT id, name, type, ip FROM nodes').all() as { id: number; name: string; type: string; ip: string }[];
   const edges = db.prepare('SELECT source_id, target_id FROM edges').all() as { source_id: number; target_id: number }[];
   const name = new Map(nodes.map((n) => [n.id, n.name]));
 
   const monitor = nodes.find((n) => n.type === 'monitor');
   const { parent, children } = buildHierarchy(edges, monitor?.id);
 
+  // Un nodo sin IP no se pinguea → nunca está en openDown → es "transparente" para la causa raíz.
+  const transparent = new Set(nodes.filter((n) => !n.ip && n.type !== 'monitor').map((n) => n.id));
   const downRows = db.prepare("SELECT node_id FROM alerts WHERE type = 'node_down' AND resolved_at IS NULL AND node_id IS NOT NULL").all() as { node_id: number }[];
-  return { name, parent, children, openDown: new Set(downRows.map((r) => r.node_id)) };
+  return { name, parent, children, openDown: new Set(downRows.map((r) => r.node_id)), transparent };
 }
 
 /**
@@ -103,22 +110,31 @@ export function buildHierarchy(
   return { parent, children };
 }
 
-/** Sube por los padres mientras sigan caídos; devuelve el nodo raíz de la caída. */
+/**
+ * Sube por los padres devolviendo el nodo CAÍDO más cercano al Monitor del clúster.
+ * Los nodos pasivos (transparent, sin IP) se atraviesan como si fueran cable: no rompen
+ * el clúster ni cuentan como raíz. Así la caída de una OLT detrás de un NAP se agrupa bien.
+ */
 export function rootOf(n: number, topo: Topo): number {
-  let cur = n; const seen = new Set<number>([cur]);
+  const transparent = topo.transparent ?? new Set<number>();
+  let cur = n; let lastDown = n; const seen = new Set<number>([cur]);
   for (;;) {
     const p = topo.parent.get(cur);
-    if (p === undefined || !topo.openDown.has(p) || seen.has(p)) return cur;
-    cur = p; seen.add(p);
+    if (p === undefined || seen.has(p)) return lastDown;
+    if (topo.openDown.has(p)) { cur = p; lastDown = p; seen.add(p); continue; }
+    if (transparent.has(p)) { cur = p; seen.add(p); continue; } // atravesar el pasivo
+    return lastDown;
   }
 }
-/** Descendientes de `root` que también están caídos (equipos arrastrados). */
+/** Descendientes CAÍDOS de `root` (atravesando pasivos transparentes). */
 export function downstreamCasualties(root: number, topo: Topo): number[] {
+  const transparent = topo.transparent ?? new Set<number>();
   const out: number[] = []; const stack = [...(topo.children.get(root) ?? [])]; const seen = new Set<number>();
   while (stack.length) {
     const n = stack.pop()!;
     if (seen.has(n)) continue; seen.add(n);
     if (topo.openDown.has(n)) { out.push(n); stack.push(...(topo.children.get(n) ?? [])); }
+    else if (transparent.has(n)) { stack.push(...(topo.children.get(n) ?? [])); } // seguir a través del pasivo
   }
   return out;
 }

@@ -20,7 +20,7 @@ type ChatHandler = (event: string, data: { sessionId: string; text?: string; nam
 const NAV: Section[] = ['topology', 'map', 'alerts', 'saturation', 'ai', 'telegram', 'settings'];
 
 // Equipos de infraestructura cuya caída dispara la alarma de emergencia sonora.
-const INFRA_TYPES = new Set<string>(['mikrotik', 'router', 'ptp-mimosa', 'ap-ubiquiti']);
+const INFRA_TYPES = new Set<string>(['mikrotik', 'router', 'ptp-mimosa', 'ap-ubiquiti', 'olt']);
 
 export default function App() {
   const [nodes, setNodes] = useState<ApiNode[]>([]);
@@ -219,6 +219,7 @@ export default function App() {
               <GeoMap
                 nodes={nodes} edges={edges} live={live}
                 maptilerKey={mapCfg.key} mapStyle={mapCfg.style}
+                selectedNodeId={selectedNodeId}
                 onSelectNode={(id) => { setSelectedNodeId(id); setSelectedEdgeId(null); }}
                 onSelectEdge={(id) => { setSelectedEdgeId(id); setSelectedNodeId(null); }}
                 onChanged={reload}

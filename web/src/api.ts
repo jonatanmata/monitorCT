@@ -59,8 +59,16 @@ export const api = {
   createEdge: (body: { sourceId: number; targetId: number; label?: string; capacityMbps?: number; sourceInterface?: string }) =>
     http<ApiEdge>('/api/edges', { method: 'POST', body: JSON.stringify(body) }),
 
-  updateEdge: (id: number, body: { label?: string; capacityMbps?: number | null; sourceInterface?: string }) =>
+  updateEdge: (id: number, body: { label?: string; capacityMbps?: number | null; sourceInterface?: string; medium?: string; fiber?: unknown }) =>
     http<ApiEdge>(`/api/edges/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  ponBudget: (onuId: number) =>
+    http<{
+      supported: boolean; note?: string;
+      txDbm: number | null; rxDbm: number | null; totalLossDb: number;
+      hops: { node: string; kind: string; detail: string; lossDb: number }[];
+      warnings: string[]; path: number[];
+    }>(`/api/pon/budget/${onuId}`),
 
   deleteEdge: (id: number) => http<{ ok: boolean }>(`/api/edges/${id}`, { method: 'DELETE' }),
 
