@@ -370,6 +370,11 @@ select.inp { cursor: pointer; }
 .geo-tower-ico { display: flex; align-items: center; }
 .geo-tower-basename { font-family: 'IBM Plex Sans', sans-serif; font-size: 10.5px; font-weight: 700; color: var(--text); white-space: nowrap; }
 .geo-tower-empty { font-size: 9px; color: var(--muted); padding: 2px 6px; }
+/* selector de estilo del mapa (normal / satélite / topográfico) */
+.geo-style-switch { position: absolute; top: 14px; left: 14px; z-index: 5; display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 9px; padding: 3px; box-shadow: var(--shadow); }
+.geo-style-switch button { border: none; background: transparent; color: var(--text2); font-family: inherit; font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.geo-style-switch button:hover { color: var(--text); background: var(--panel2); }
+.geo-style-switch button.active { background: var(--accent); color: #fff; }
 /* botón flecha ↕ para mostrar/ocultar los equipos de la torre/rack en el mapa */
 .geo-tower-toggle { width: 16px; height: 16px; border-radius: 5px; border: 1px solid var(--border2); background: var(--panel2); color: var(--accent); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; }
 .geo-tower-toggle:hover { border-color: var(--accent); filter: brightness(1.1); }

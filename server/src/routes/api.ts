@@ -566,7 +566,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
     else if (b.anthropicApiKey) saveApiKey(b.anthropicApiKey.trim());
     if (b.aiModelDiagnosis || b.aiModelEconomic) setAiModels(b.aiModelDiagnosis, b.aiModelEconomic);
     if (b.maptilerKey !== undefined) setSetting('maptiler_key', b.maptilerKey.trim());
-    if (b.mapStyle !== undefined && ['dark', 'satellite', 'streets'].includes(b.mapStyle)) setSetting('map_style', b.mapStyle);
+    if (b.mapStyle !== undefined && ['dark', 'satellite', 'topo', 'streets'].includes(b.mapStyle)) setSetting('map_style', b.mapStyle);
     return { ok: true, hasApiKey: aiAvailable() };
   });
 

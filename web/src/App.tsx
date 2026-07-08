@@ -251,6 +251,7 @@ export default function App() {
                 onSelectEdge={(id) => { setSelectedEdgeId(id); setSelectedNodeId(null); }}
                 onChanged={reload}
                 onHelp={() => setHelpKey('map')}
+                onStyleChange={(style) => { setMapCfg((c) => ({ ...c, style })); void api.saveSettings({ mapStyle: style }); }}
               />
             </Suspense>
           )}

@@ -198,9 +198,9 @@ export function SettingsSection({ onAiChanged, focusStart, onFocusChanged, alarm
           <label className="field">
             <span className="field-label">Estilo del mapa</span>
             <select className="inp sans" value={mapStyle} onChange={(e) => setMapStyle(e.target.value)}>
-              <option value="dark">Oscuro (dataviz)</option>
+              <option value="dark">Normal (según el tema)</option>
               <option value="satellite">Satélite / híbrido</option>
-              <option value="streets">Calles</option>
+              <option value="topo">Topográfico / relieve</option>
             </select>
           </label>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 12 }}>

@@ -49,17 +49,20 @@ function fmtDist(m: number): string {
  */
 function buildStyle(key: string, style: string, theme: 'dark' | 'light'): string | maplibregl.StyleSpecification {
   const isMapbox = /^(pk|sk)\./.test(key.trim());
-  // El mapa base sigue el tema de la app (claro/oscuro), salvo satélite (siempre foto).
-  const base = style === 'satellite' ? 'satellite' : theme;
+  // Modos: satélite (foto) y topográfico (relieve) son fijos; «normal» sigue el tema claro/oscuro.
   if (isMapbox) {
-    const id = ({ dark: 'dark-v11', light: 'light-v11', satellite: 'satellite-streets-v12' } as Record<string, string>)[base] ?? 'dark-v11';
+    const id = style === 'satellite' ? 'satellite-streets-v12'
+      : style === 'topo' ? 'outdoors-v12'
+      : theme === 'light' ? 'light-v11' : 'dark-v11';
     return {
       version: 8,
       sources: { base: { type: 'raster', tiles: [`https://api.mapbox.com/styles/v1/mapbox/${id}/tiles/512/{z}/{x}/{y}@2x?access_token=${encodeURIComponent(key)}`], tileSize: 512, attribution: '© Mapbox © OpenStreetMap' } },
       layers: [{ id: 'base', type: 'raster', source: 'base' }],
     };
   }
-  const id = ({ dark: 'dataviz-dark', light: 'dataviz', satellite: 'hybrid' } as Record<string, string>)[base] ?? 'dataviz-dark';
+  const id = style === 'satellite' ? 'hybrid'
+    : style === 'topo' ? 'topo-v2'
+    : theme === 'light' ? 'dataviz' : 'dataviz-dark';
   return `https://api.maptiler.com/maps/${id}/style.json?key=${encodeURIComponent(key)}`;
 }
 
@@ -75,6 +78,7 @@ interface Props {
   onSelectEdge: (id: number) => void;
   onChanged: () => void;
   onHelp: () => void;
+  onStyleChange: (style: string) => void;
 }
 
 /** Estado efectivo de un nodo para el color (monitor siempre up; bwNear = warning). */
@@ -182,7 +186,7 @@ function paintTower(el: HTMLElement, container: ApiNode, members: ApiNode[], liv
 // pierde el zoom/centro). Módulo-scope → sobrevive al desmontaje dentro de la sesión.
 let savedView: { center: [number, number]; zoom: number; bearing: number; pitch: number } | null = null;
 
-export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, theme, selectedNodeId, onSelectNode, onSelectEdge, onChanged, onHelp }: Props) {
+export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, theme, selectedNodeId, onSelectNode, onSelectEdge, onChanged, onHelp, onStyleChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Map<number, { marker: maplibregl.Marker; el: HTMLElement; kind: 'tower' | 'node' }>>(new Map());
@@ -511,6 +515,16 @@ export default function GeoMap({ nodes, edges, live, maptilerKey, mapStyle, them
   return (
     <div className="topo-wrap">
       <div ref={containerRef} className="geo-canvas" />
+      {/* selector de estilo del mapa: normal (según tema) / satélite / topográfico */}
+      <div className="geo-style-switch">
+        {([['dark', 'Normal'], ['satellite', 'Satélite'], ['topo', 'Topográfico']] as const).map(([val, label]) => (
+          <button
+            key={val}
+            className={mapStyle === val ? 'active' : ''}
+            onClick={() => { if (mapStyle !== val) onStyleChange(val); }}
+          >{label}</button>
+        ))}
+      </div>
       {unplaced.length > 0 && (
         <div className="geo-unplaced">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
